@@ -1,0 +1,7 @@
+id,diseaseId,title,source,type,summary,url
+article-diabetes-1,diabetes,당뇨병 관리 개요,질병관리청 국가건강정보포털,웹문서,당뇨병의 기본 개념과 생활관리 방향을 확인할 수 있는 참고 자료입니다.,https://health.kdca.go.kr/
+article-hypertension-1,hypertension,고혈압 이해와 생활요법,대한고혈압학회,웹문서,혈압 관리 목표와 생활요법을 살펴볼 때 참고할 수 있는 자료입니다.,https://www.koreanhypertension.org/
+article-gastritis-1,gastritis,위염과 소화불량 자료 모음,건강정보 샘플 블로그,블로그,자극적인 음식과 생활습관 관련 내용을 짧게 정리한 외부 자료 예시입니다.,https://www.google.com/search?q=위염+생활관리
+article-arthritis-1,arthritis,관절염 환자의 운동과 체중 관리,의학 뉴스 예시,뉴스,관절 부담을 줄이는 운동과 체중 관리의 중요성을 소개하는 자료 예시입니다.,https://www.google.com/search?q=관절염+운동+체중관리
+article-insomnia-1,insomnia,수면 위생과 불면 관리,수면건강 자료실,논문,수면 습관 개선과 인지행동 접근을 이해하는 데 도움이 되는 자료 예시입니다.,https://www.google.com/search?q=insomnia+sleep+hygiene
+article-reflux-1,reflux,역류성 식도염 생활관리 체크리스트,건강 카페 예시,카페,식사 시간과 자세 등 생활 속 체크 포인트를 모은 자료 예시입니다.,https://www.google.com/search?q=역류성+식도염+생활관리

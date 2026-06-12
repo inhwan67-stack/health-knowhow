@@ -1,12 +1,12 @@
 import Link from "next/link";
-import ExperienceForm from "../components/ExperienceForm";
 import MedicalDisclaimer from "../components/MedicalDisclaimer";
-import { getExperiences } from "@/data/experiences";
+import { VideoCards } from "../components/ResourceCards";
+import { getVideos } from "@/data/videos";
 
 export const dynamic = "force-dynamic";
 
-export default function SubmitPage() {
-  const experiences = getExperiences();
+export default function VideosPage() {
+  const videos = getVideos();
 
   return (
     <main className="min-h-screen bg-[#fbfaf5] text-[#173d2d]">
@@ -16,17 +16,20 @@ export default function SubmitPage() {
             Health Knowhow
           </Link>
           <h1 className="mt-5 text-3xl font-bold leading-tight text-[#123827] sm:text-5xl">
-            건강관리 경험 공유
+            영상자료
           </h1>
           <p className="mt-4 max-w-3xl text-lg leading-8 text-[#355845]">
-            질병명 또는 증상, 생활습관, 음식, 참고 링크를 입력하면 프론트엔드 상태에 등록된 것처럼 바로 표시됩니다.
-            향후 Supabase, Firebase, 자체 백엔드와 연결하기 쉽도록 데이터 구조를 분리했습니다.
+            질병별로 참고할 수 있는 유튜브 영상 샘플을 모았습니다. 영상은 외부 링크로 이동하며,
+            임베드가 불가능한 영상도 연결할 수 있도록 버튼 방식으로 구성했습니다.
           </p>
         </div>
       </section>
 
       <section className="mx-auto max-w-7xl px-5 py-10 sm:px-8 lg:px-12">
-        <ExperienceForm initialExperiences={experiences} />
+        <div className="mb-5 rounded-lg border border-[#ead0c6] bg-[#fff7f3] p-5 text-base leading-7 text-[#714533]">
+          영상자료는 일반 건강정보 참고용이며 의학적 진단, 치료, 처방을 대신하지 않습니다.
+        </div>
+        <VideoCards videos={videos} />
       </section>
 
       <MedicalDisclaimer />
