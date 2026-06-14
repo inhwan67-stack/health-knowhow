@@ -1,12 +1,18 @@
 import Link from "next/link";
 import ExperienceForm from "../components/ExperienceForm";
 import MedicalDisclaimer from "../components/MedicalDisclaimer";
-import { getExperiences } from "@/data/experiences";
+import { getDiseases } from "@/data/diseases";
 
 export const dynamic = "force-dynamic";
 
-export default function SubmitPage() {
-  const experiences = getExperiences();
+export default async function SubmitPage({
+  searchParams,
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const params = searchParams ? await searchParams : {};
+  const diseases = getDiseases();
+  const initialDiseaseSlug = firstParam(params.disease);
 
   return (
     <main className="min-h-screen bg-[#fbfaf5] text-[#173d2d]">
@@ -16,20 +22,25 @@ export default function SubmitPage() {
             Health Knowhow
           </Link>
           <h1 className="mt-5 text-3xl font-bold leading-tight text-[#123827] sm:text-5xl">
-            건강관리 경험 공유
+            건강관리 경험 공유하기
           </h1>
           <p className="mt-4 max-w-3xl text-lg leading-8 text-[#355845]">
-            질병명 또는 증상, 생활습관, 음식, 참고 링크를 입력하면 프론트엔드 상태에 등록된 것처럼 바로 표시됩니다.
-            향후 Supabase, Firebase, 자체 백엔드와 연결하기 쉽도록 데이터 구조를 분리했습니다.
+            본인의 건강관리 경험을 공유해 주세요. 공유된 경험담은 다른 사용자에게 참고가 될 수 있지만,
+            의학적 진단이나 치료법으로 사용되어서는 안 됩니다.
           </p>
         </div>
       </section>
 
       <section className="mx-auto max-w-7xl px-5 py-10 sm:px-8 lg:px-12">
-        <ExperienceForm initialExperiences={experiences} />
+        <ExperienceForm diseases={diseases} initialDiseaseSlug={initialDiseaseSlug} />
       </section>
 
       <MedicalDisclaimer />
     </main>
   );
+}
+
+function firstParam(value: string | string[] | undefined) {
+  if (Array.isArray(value)) return value[0] ?? "";
+  return value ?? "";
 }

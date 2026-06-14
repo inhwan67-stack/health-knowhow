@@ -11,6 +11,7 @@ export function getArticles(): ArticleResource[] {
     type: row.type,
     summary: row.summary,
     url: row.url || "https://health.kdca.go.kr/",
+    lastReviewed: row.lastReviewed,
   }));
 }
 

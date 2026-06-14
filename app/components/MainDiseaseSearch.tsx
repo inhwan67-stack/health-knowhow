@@ -2,11 +2,11 @@
 
 import { FormEvent, useMemo, useState } from "react";
 import Link from "next/link";
-import type { Disease } from "@/data/types";
+import type { Disease, Symptom } from "@/data/types";
 
-const exampleQueries = ["속쓰림", "혈당", "불면증", "관절 통증", "고혈압", "역류"];
+const exampleQueries = ["속쓰림", "혈당", "두근거림", "콧물", "기침", "손저림"];
 
-export default function MainDiseaseSearch({ diseases }: { diseases: Disease[] }) {
+export default function MainDiseaseSearch({ diseases, symptoms }: { diseases: Disease[]; symptoms: Symptom[] }) {
   const [input, setInput] = useState("");
   const [query, setQuery] = useState("");
 
@@ -14,22 +14,34 @@ export default function MainDiseaseSearch({ diseases }: { diseases: Disease[] })
     const normalizedQuery = query.trim().toLowerCase();
     if (!normalizedQuery) return diseases.slice(0, 6);
 
-    return diseases.filter((disease) =>
-      [
+    const symptomDiseaseIds = new Set(
+      symptoms
+        .filter((symptom) =>
+          [symptom.name, symptom.description, ...symptom.searchAliases].join(" ").toLowerCase().includes(normalizedQuery),
+        )
+        .flatMap((symptom) => symptom.relatedDiseaseIds),
+    );
+
+    return diseases.filter((disease) => {
+      const diseaseText = [
         disease.name,
         disease.category,
         disease.summary,
+        disease.description,
+        ...disease.relatedSymptoms,
         ...disease.symptoms,
         ...disease.lifestyle,
         ...disease.causes,
         ...disease.diet,
+        ...disease.searchKeywords,
         ...disease.keywords,
       ]
         .join(" ")
-        .toLowerCase()
-        .includes(normalizedQuery),
-    );
-  }, [diseases, query]);
+        .toLowerCase();
+
+      return diseaseText.includes(normalizedQuery) || symptomDiseaseIds.has(disease.id) || symptomDiseaseIds.has(disease.slug);
+    });
+  }, [diseases, query, symptoms]);
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -128,7 +140,7 @@ export default function MainDiseaseSearch({ diseases }: { diseases: Disease[] })
       ) : (
         <div className="rounded-lg border border-[#d9e6d2] bg-white p-8 text-center shadow-sm">
           <p className="text-lg font-bold text-[#173d2d]">
-            관련 정보를 찾지 못했습니다. 다른 증상이나 질병명을 입력해 주세요.
+            관련 정보를 찾지 못했습니다. 다른 증상명이나 질병명을 입력해 주세요. 증상이 심하거나 지속되는 경우 의료기관 상담을 권장합니다.
           </p>
           <p className="mt-2 text-base leading-7 text-[#526257]">
             예: 속쓰림, 혈당, 수면, 관절 통증처럼 증상 단어로도 검색할 수 있습니다.

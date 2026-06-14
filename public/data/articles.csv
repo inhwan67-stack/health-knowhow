@@ -1,7 +1,39 @@
-id,diseaseId,title,source,type,summary,url
-article-diabetes-1,diabetes,당뇨병 관리 개요,질병관리청 국가건강정보포털,웹문서,당뇨병의 기본 개념과 생활관리 방향을 확인할 수 있는 참고 자료입니다.,https://health.kdca.go.kr/
-article-hypertension-1,hypertension,고혈압 이해와 생활요법,대한고혈압학회,웹문서,혈압 관리 목표와 생활요법을 살펴볼 때 참고할 수 있는 자료입니다.,https://www.koreanhypertension.org/
-article-gastritis-1,gastritis,위염과 소화불량 자료 모음,건강정보 샘플 블로그,블로그,자극적인 음식과 생활습관 관련 내용을 짧게 정리한 외부 자료 예시입니다.,https://www.google.com/search?q=위염+생활관리
-article-arthritis-1,arthritis,관절염 환자의 운동과 체중 관리,의학 뉴스 예시,뉴스,관절 부담을 줄이는 운동과 체중 관리의 중요성을 소개하는 자료 예시입니다.,https://www.google.com/search?q=관절염+운동+체중관리
-article-insomnia-1,insomnia,수면 위생과 불면 관리,수면건강 자료실,논문,수면 습관 개선과 인지행동 접근을 이해하는 데 도움이 되는 자료 예시입니다.,https://www.google.com/search?q=insomnia+sleep+hygiene
-article-reflux-1,reflux,역류성 식도염 생활관리 체크리스트,건강 카페 예시,카페,식사 시간과 자세 등 생활 속 체크 포인트를 모은 자료 예시입니다.,https://www.google.com/search?q=역류성+식도염+생활관리
+id,diseaseId,title,source,type,summary,url,lastReviewed
+article-diabetes-1,diabetes,당뇨병 생활관리 개요,질병관리청,웹문서,당뇨병의 기본 개념과 생활관리 방향을 확인할 수 있는 참고 자료입니다.,https://health.kdca.go.kr/,2026-06-13
+article-hyperlipidemia-1,hyperlipidemia,고지혈증과 심혈관 위험 관리,국민건강보험공단,웹문서,지질 수치와 생활습관 점검에 참고할 수 있는 자료입니다.,https://www.nhis.or.kr/,2026-06-13
+article-fatty-liver-1,fatty-liver,지방간 건강정보,대학병원 건강정보,웹문서,간수치와 지방간 상담 전 확인할 항목을 정리한 참고자료입니다.,https://www.google.com/search?q=대학병원+지방간+건강정보,2026-06-13
+article-gout-1,gout,통풍과 요산 정보,NHS,웹문서,통풍 증상과 요산 관련 생활관리 참고자료입니다.,https://www.nhs.uk/search/results?q=gout,2026-06-13
+article-obesity-1,obesity,비만과 건강위험 개요,WHO,웹문서,비만과 생활습관 관리 방향을 이해하기 위한 국제 자료입니다.,https://www.who.int/health-topics/obesity,2026-06-13
+article-hypertension-1,hypertension,고혈압 이해와 생활요법,질병관리청,웹문서,혈압 관리와 저염식 방향을 살펴볼 때 참고할 수 있는 자료입니다.,https://health.kdca.go.kr/,2026-06-13
+article-hypotension-1,hypotension,저혈압 증상과 상담 기준,NHS,웹문서,어지러움과 실신 위험이 있을 때 참고할 수 있는 자료입니다.,https://www.nhs.uk/search/results?q=low+blood+pressure,2026-06-13
+article-angina-1,angina,협심증과 가슴통증 참고자료,MedlinePlus,웹문서,가슴통증과 응급 신호를 구분할 때 참고할 수 있는 자료입니다.,https://medlineplus.gov/angina.html,2026-06-13
+article-arrhythmia-1,arrhythmia,부정맥과 두근거림 정보,MedlinePlus,웹문서,맥박 불규칙과 심전도 상담 전 확인할 내용을 정리한 자료입니다.,https://medlineplus.gov/arrhythmia.html,2026-06-13
+article-arteriosclerosis-1,arteriosclerosis,동맥경화와 심혈관 위험,WHO,웹문서,혈관 건강 위험요인과 예방적 생활관리 방향을 볼 수 있는 자료입니다.,https://www.who.int/health-topics/cardiovascular-diseases,2026-06-13
+article-gastritis-1,gastritis,위염과 소화불량 자료,국가건강정보포털,웹문서,속쓰림과 상복부 불편감이 있을 때 참고할 수 있는 자료입니다.,https://health.kdca.go.kr/,2026-06-13
+article-reflux-1,reflux,역류성 식도염 생활관리,NHS,웹문서,신물 역류와 식후 습관을 점검할 때 참고할 수 있는 자료입니다.,https://www.nhs.uk/search/results?q=acid+reflux,2026-06-13
+article-ibs-1,ibs,과민성대장증후군 정보,NHS,웹문서,복통과 배변 변화가 반복될 때 참고할 수 있는 자료입니다.,https://www.nhs.uk/search/results?q=IBS,2026-06-13
+article-constipation-1,constipation,변비 생활관리,MedlinePlus,웹문서,수분과 식이섬유 섭취를 점검할 때 참고할 수 있는 자료입니다.,https://medlineplus.gov/constipation.html,2026-06-13
+article-diarrhea-1,diarrhea,설사와 탈수 주의,CDC,웹문서,설사와 탈수 위험 신호를 확인할 때 참고할 수 있는 자료입니다.,https://www.cdc.gov/,2026-06-13
+article-gallstones-1,gallstones,담석증 정보,NHS,웹문서,오른쪽 윗배 통증과 담석 상담 전 확인할 수 있는 자료입니다.,https://www.nhs.uk/search/results?q=gallstones,2026-06-13
+article-rhinitis-1,rhinitis,알레르기 비염 정보,NHS,웹문서,코막힘과 콧물 반복 시 환경관리 참고자료입니다.,https://www.nhs.uk/search/results?q=allergic+rhinitis,2026-06-13
+article-asthma-1,asthma,천식 증상과 관리,CDC,웹문서,숨참과 쌕쌕거림이 있을 때 상담 기준을 확인할 수 있는 자료입니다.,https://www.cdc.gov/asthma/,2026-06-13
+article-bronchitis-1,bronchitis,기관지염 건강정보,MedlinePlus,웹문서,기침과 가래가 지속될 때 참고할 수 있는 자료입니다.,https://medlineplus.gov/acutebronchitis.html,2026-06-13
+article-chronic-cough-1,chronic-cough,만성기침 원인 확인,NHS,웹문서,기침이 오래갈 때 상담 전 확인할 항목을 정리한 자료입니다.,https://www.nhs.uk/search/results?q=chronic+cough,2026-06-13
+article-arthritis-1,arthritis,관절염 환자의 운동과 체중 관리,국가건강정보포털,웹문서,관절 부담을 줄이는 운동과 생활관리 참고자료입니다.,https://health.kdca.go.kr/,2026-06-13
+article-back-pain-1,back-pain,허리통증과 경고 신호,MedlinePlus,웹문서,허리통증에서 진료 상담이 필요한 신호를 확인할 수 있습니다.,https://medlineplus.gov/backpain.html,2026-06-13
+article-neck-disc-1,neck-disc,목디스크와 팔저림 정보,대학병원 건강정보,웹문서,목 통증과 손저림이 있을 때 참고할 수 있는 자료입니다.,https://www.google.com/search?q=대학병원+목디스크+건강정보,2026-06-13
+article-frozen-shoulder-1,frozen-shoulder,오십견과 어깨 운동 범위,대학병원 건강정보,웹문서,어깨 움직임 제한과 진료 상담 기준을 정리한 참고자료입니다.,https://www.google.com/search?q=대학병원+오십견+건강정보,2026-06-13
+article-carpal-tunnel-1,carpal-tunnel,손목터널증후군 정보,MedlinePlus,웹문서,손저림과 손목 통증 상담 전 참고할 수 있는 자료입니다.,https://medlineplus.gov/carpaltunnelsyndrome.html,2026-06-13
+article-insomnia-1,insomnia,수면 위생과 불면 관리,NHS,웹문서,수면 습관 개선과 상담 기준을 이해하는 데 도움이 되는 자료입니다.,https://www.nhs.uk/search/results?q=insomnia,2026-06-13
+article-anxiety-1,anxiety,불안 증상 참고자료,NHS,웹문서,불안과 두근거림을 기록하고 상담 기준을 확인하는 자료입니다.,https://www.nhs.uk/search/results?q=anxiety,2026-06-13
+article-depressed-mood-1,depressed-mood,우울감과 도움 요청,WHO,웹문서,기분 저하와 도움 요청 기준을 이해하는 데 참고할 수 있습니다.,https://www.who.int/health-topics/depression,2026-06-13
+article-stress-headache-1,stress-headache,긴장성 두통 정보,MedlinePlus,웹문서,스트레스와 두통 양상을 기록할 때 참고할 수 있는 자료입니다.,https://medlineplus.gov/headache.html,2026-06-13
+article-atopic-dermatitis-1,atopic-dermatitis,아토피 피부염 관리,NHS,웹문서,가려움과 보습 습관을 점검할 때 참고할 수 있는 자료입니다.,https://www.nhs.uk/search/results?q=atopic+dermatitis,2026-06-13
+article-urticaria-1,urticaria,두드러기와 알레르기 주의,CDC,웹문서,두드러기와 응급 알레르기 신호를 확인하는 참고자료입니다.,https://www.cdc.gov/,2026-06-13
+article-acne-1,acne,여드름과 피부 자극 관리,대학병원 건강정보,웹문서,피부 자극과 생활습관을 기록할 때 참고할 수 있는 자료입니다.,https://www.google.com/search?q=대학병원+여드름+건강정보,2026-06-13
+article-psoriasis-1,psoriasis,건선 건강정보,NHS,웹문서,각질과 피부 증상 악화 요인을 확인할 수 있는 자료입니다.,https://www.nhs.uk/search/results?q=psoriasis,2026-06-13
+article-hemorrhoids-1,hemorrhoids,치질과 항문 출혈 참고자료,국가건강정보포털,웹문서,치질과 항문 출혈 증상을 이해하고 상담 전 확인할 항목을 정리한 참고자료입니다.,https://health.kdca.go.kr/,2026-06-14
+article-hemorrhoids-2,hemorrhoids,항문질환과 배변 습관,국민건강보험공단,웹문서,변비와 배변 습관이 항문 불편감에 미칠 수 있는 영향을 살펴보는 자료입니다.,https://www.nhis.or.kr/,2026-06-14
+article-hemorrhoids-3,hemorrhoidal-disease,치핵 건강정보,대학병원 건강정보,웹문서,치핵 증상과 대장항문외과 상담 기준을 확인할 수 있는 mock 참고자료입니다.,https://www.google.com/search?q=대학병원+치핵+건강정보,2026-06-14
+article-anal-fissure-1,anal-fissure,치열과 배변 시 통증,MedlinePlus,웹문서,배변 시 통증과 선홍색 출혈이 있을 때 참고할 수 있는 외부 자료입니다.,https://medlineplus.gov/ency/article/001130.htm,2026-06-14
+article-anal-fistula-1,anal-fistula,치루와 항문 주변 분비물,대학병원 건강정보,웹문서,항문 주변 고름이나 분비물이 반복될 때 상담 전 확인할 내용을 정리한 mock 자료입니다.,https://www.google.com/search?q=대학병원+치루+건강정보,2026-06-14

@@ -14,3 +14,15 @@ export type SymptomRecord = {
   agreeToShare: boolean;
   createdAt: string;
 };
+
+export type {
+  ArticleResource,
+  DietGuide,
+  Disease,
+  ExerciseGuide,
+  Experience,
+  Symptom,
+  VideoResource,
+} from "@/data/types";
+export type { AffiliateProduct } from "@/data/affiliateProducts";
+export type { ClinicGuide as ClinicInfo } from "@/data/clinics";

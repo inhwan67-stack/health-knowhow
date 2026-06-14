@@ -4,6 +4,7 @@ import path from "path";
 export type CsvRow = Record<string, string>;
 
 export function readCsvRows(fileName: string): CsvRow[] {
+  // public/data CSV files are the Excel-friendly source shape for future import tooling.
   const filePath = path.join(process.cwd(), "public", "data", fileName);
   const content = readFileSync(filePath, "utf8").replace(/^\uFEFF/, "");
   return parseCsv(content);

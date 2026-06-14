@@ -8,7 +8,9 @@ const navItems = [
   { label: "질병정보", href: "/diseases" },
   { label: "식이요법", href: "/foods" },
   { label: "영상자료", href: "/videos" },
-  { label: "경험담", href: "/remedies" },
+  { label: "경험담", href: "/experiences" },
+  { label: "증상기록", href: "/records" },
+  { label: "프리미엄", href: "/premium" },
   { label: "정보 등록", href: "/submit" },
 ];
 
@@ -36,12 +38,12 @@ export default function SiteHeader() {
             메뉴
           </button>
 
-          <nav id="site-navigation" aria-label="주요 메뉴" className="hidden gap-1 lg:flex">
+          <nav id="site-navigation" aria-label="주요 메뉴" className="hidden flex-wrap justify-end gap-1 lg:flex">
             {navItems.map((item) => (
               <Link
                 key={item.href}
                 href={item.href}
-                className="rounded-full px-4 py-2.5 text-sm font-bold text-[#2f6c48] transition hover:bg-[#eef6e9] hover:text-[#174330] focus:outline-none focus:ring-4 focus:ring-[#d9ead2]"
+                className="rounded-full px-3 py-2.5 text-sm font-bold text-[#2f6c48] transition hover:bg-[#eef6e9] hover:text-[#174330] focus:outline-none focus:ring-4 focus:ring-[#d9ead2] xl:px-4"
               >
                 {item.label}
               </Link>

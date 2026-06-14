@@ -3,7 +3,7 @@
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 
-const examples = ["당뇨", "고혈압", "위염", "관절염", "불면증", "역류성 식도염"];
+const examples = ["속쓰림", "혈당", "두근거림", "콧물", "기침", "손저림"];
 
 export default function HomeSearch() {
   const router = useRouter();

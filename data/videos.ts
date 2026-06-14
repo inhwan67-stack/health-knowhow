@@ -10,6 +10,7 @@ export function getVideos(): VideoResource[] {
     channel: row.channel,
     summary: row.summary,
     url: row.url || "https://www.youtube.com/results?search_query=건강정보",
+    category: row.category,
   }));
 }
 

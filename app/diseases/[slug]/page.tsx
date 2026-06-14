@@ -1,10 +1,16 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import AffiliateDisclaimer from "@/app/components/AffiliateDisclaimer";
 import MedicalDisclaimer from "@/app/components/MedicalDisclaimer";
 import { ArticleCards, VideoCards } from "@/app/components/ResourceCards";
+import AffiliateProductCards from "@/app/premium/AffiliateProductCards";
+import { getAffiliateProductsByDisease } from "@/data/affiliateProducts";
 import { getArticlesByDisease } from "@/data/articles";
+import { getClinicsByDisease } from "@/data/clinics";
+import { getDetailedDietGuidesByDisease } from "@/data/dietGuides";
 import { getDiseaseBySlug } from "@/data/diseases";
+import { getExerciseGuidesByDisease } from "@/data/exercises";
 import { getExperiencesByDisease } from "@/data/experiences";
 import { getFoodGuideByDisease } from "@/data/foods";
 import { getVideosByDisease } from "@/data/videos";
@@ -57,10 +63,18 @@ export default async function DiseaseDetailPage({
   if (!disease) notFound();
 
   const foodGuide = getFoodGuideByDisease(disease.slug);
+  const exerciseGuides = getExerciseGuidesByDisease(disease.id);
+  const detailedDietGuides = getDetailedDietGuidesByDisease(disease.id);
   const videos = getVideosByDisease(disease.slug);
   const articles = getArticlesByDisease(disease.slug);
   const relatedExperiences = getExperiencesByDisease(disease.slug);
+  const clinicGuides = getClinicsByDisease(disease.id);
+  const affiliateProducts = getAffiliateProductsByDisease(disease.id);
   const externalMedicalResources = await searchExternalMedicalSources(`${disease.name} ${disease.slug}`);
+  const medicalVideos = videos.filter((video) => getVideoGroup(video.category) === "medical");
+  const dietVideos = videos.filter((video) => getVideoGroup(video.category) === "diet");
+  const exerciseVideos = videos.filter((video) => getVideoGroup(video.category) === "exercise");
+  const lifestyleVideos = videos.filter((video) => getVideoGroup(video.category) === "lifestyle");
 
   return (
     <main className="min-h-screen bg-[#fbfaf5] text-[#173d2d]">
@@ -119,13 +133,57 @@ export default async function DiseaseDetailPage({
 
           <div className="rounded-lg border border-[#dde6d7] bg-white p-6 shadow-sm">
             <h2 className="text-2xl font-bold text-[#1b4631]">진료과 안내</h2>
-            <div className="mt-4 flex flex-wrap gap-2">
-              {disease.department.map((department) => (
-                <span key={department} className="rounded-full bg-[#eef6e9] px-3 py-1.5 text-sm font-bold text-[#2f6c48]">
-                  {department}
-                </span>
-              ))}
-            </div>
+            <p className="mt-3 text-sm leading-6 text-[#526257]">
+              아래 정보는 진료과 선택에 도움을 주기 위한 참고 정보이며, 특정 병원이나 의료행위를 추천하는 것이 아닙니다.
+            </p>
+            {clinicGuides.length > 0 ? (
+              <div className="mt-5 grid gap-4">
+                {clinicGuides.map((clinic) => (
+                  <article key={clinic.id} className="rounded-lg border border-[#dde6d7] bg-[#fffdf7] p-4">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="rounded-full bg-[#eef6e9] px-3 py-1.5 text-xs font-bold text-[#2f6c48]">
+                        {clinic.department}
+                      </span>
+                      {clinic.isAd ? (
+                        <span className="rounded-full bg-[#f5f0e4] px-3 py-1.5 text-xs font-bold text-[#7a6230]">
+                          광고
+                        </span>
+                      ) : null}
+                    </div>
+                    <p className="mt-3 text-sm font-bold text-[#1b4631]">
+                      {clinic.clinicName} · {clinic.region}
+                    </p>
+                    <p className="mt-2 text-sm leading-6 text-[#526257]">{clinic.description}</p>
+                    {clinic.homepageUrl ? (
+                      <a
+                        href={clinic.homepageUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="mt-4 inline-flex rounded-lg border border-[#174330] px-4 py-2.5 text-sm font-bold text-[#174330] transition hover:bg-[#eef6e9]"
+                      >
+                        병원 홈페이지 보기
+                      </a>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled
+                        className="mt-4 inline-flex cursor-not-allowed rounded-lg border border-[#bcd2b2] bg-[#f4faf0] px-4 py-2.5 text-sm font-bold text-[#6a776e]"
+                      >
+                        병원 홈페이지 보기 준비 중
+                      </button>
+                    )}
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <div className="mt-4 flex flex-wrap gap-2">
+                {disease.department.map((department) => (
+                  <span key={department} className="rounded-full bg-[#eef6e9] px-3 py-1.5 text-sm font-bold text-[#2f6c48]">
+                    {department}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
         </aside>
       </section>
@@ -149,10 +207,80 @@ export default async function DiseaseDetailPage({
 
       <section className="mx-auto max-w-[1440px] px-5 pb-12 sm:px-8 lg:px-12">
         <div className="mb-5">
+          <p className="text-sm font-bold text-[#2f6c48]">운동요법 참고자료</p>
+          <h2 className="mt-2 text-3xl font-bold text-[#173d2d]">생활관리 참고 운동</h2>
+          <p className="mt-3 max-w-4xl text-base leading-7 text-[#526257]">
+            운동요법은 개인의 질환 상태, 체력, 통증 정도에 따라 적합성이 달라질 수 있습니다. 통증이 심하거나 증상이 악화되는 경우 운동을 중단하고 의료기관 상담을 권장합니다.
+          </p>
+        </div>
+        {exerciseGuides.length > 0 ? (
+          <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+            {exerciseGuides.map((guide) => (
+              <article key={guide.id} className="rounded-lg border border-[#dde6d7] bg-white p-6 shadow-sm">
+                <p className="text-sm font-bold text-[#2f6c48]">{guide.category} · 강도 {guide.intensity}</p>
+                <h3 className="mt-2 text-xl font-bold text-[#1b4631]">{guide.title}</h3>
+                <p className="mt-3 text-base leading-7 text-[#526257]">{guide.description}</p>
+                <TagList title="참고할 수 있는 운동" items={guide.recommendedExercises} color="green" />
+                <TagList title="주의가 필요한 운동" items={guide.cautionExercises} color="red" />
+                <p className="mt-4 text-sm font-semibold text-[#526257]">빈도: {guide.frequency} · 시간: {guide.duration}</p>
+                <p className="mt-4 rounded-lg bg-[#fffdf7] p-4 text-sm leading-6 text-[#5b6146]">{guide.warning}</p>
+                <a href={guide.videoSearchUrl} target="_blank" rel="noreferrer" className="mt-5 inline-flex min-h-11 items-center rounded-lg border border-[#174330] px-4 py-2.5 text-sm font-bold text-[#174330] transition hover:bg-[#eef6e9]">
+                  관련 운동 영상 보기
+                </a>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <div className="rounded-lg border border-[#dde6d7] bg-white p-6 text-base text-[#526257] shadow-sm">
+            연결된 운동요법 참고자료가 아직 없습니다.
+          </div>
+        )}
+      </section>
+
+      <section className="mx-auto max-w-[1440px] px-5 pb-12 sm:px-8 lg:px-12">
+        <div className="mb-5">
+          <p className="text-sm font-bold text-[#2f6c48]">식이요법 참고자료</p>
+          <h2 className="mt-2 text-3xl font-bold text-[#173d2d]">식습관과 식재료 참고</h2>
+          <p className="mt-3 max-w-4xl text-base leading-7 text-[#526257]">
+            식이요법은 개인의 건강상태, 복용 중인 약, 기저질환에 따라 다르게 적용될 수 있습니다. 특정 음식이나 식단이 치료를 보장하지 않습니다.
+          </p>
+        </div>
+        {detailedDietGuides.length > 0 ? (
+          <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+            {detailedDietGuides.map((guide) => (
+              <article key={guide.id} className="rounded-lg border border-[#dde6d7] bg-white p-6 shadow-sm">
+                <p className="text-sm font-bold text-[#2f6c48]">식습관 참고자료</p>
+                <h3 className="mt-2 text-xl font-bold text-[#1b4631]">{guide.title}</h3>
+                <p className="mt-3 text-base leading-7 text-[#526257]">{guide.description}</p>
+                <TagList title="참고할 수 있는 식재료" items={guide.recommendedIngredients} color="green" />
+                <TagList title="주의가 필요한 음식" items={guide.cautionIngredients} color="red" />
+                <TagList title="식사 습관 팁" items={guide.mealTips} color="green" />
+                <TagList title="피하면 좋은 식습관" items={guide.avoidPatterns} color="red" />
+                <p className="mt-4 rounded-lg bg-[#fffdf7] p-4 text-sm leading-6 text-[#5b6146]">{guide.warning}</p>
+                <a href={guide.videoSearchUrl} target="_blank" rel="noreferrer" className="mt-5 inline-flex min-h-11 items-center rounded-lg border border-[#174330] px-4 py-2.5 text-sm font-bold text-[#174330] transition hover:bg-[#eef6e9]">
+                  관련 식이요법 영상 보기
+                </a>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <div className="rounded-lg border border-[#dde6d7] bg-white p-6 text-base text-[#526257] shadow-sm">
+            연결된 식이요법 상세 참고자료가 아직 없습니다.
+          </div>
+        )}
+      </section>
+
+      <section className="mx-auto max-w-[1440px] px-5 pb-12 sm:px-8 lg:px-12">
+        <div className="mb-5">
           <p className="text-sm font-bold text-[#2f6c48]">관련 영상자료</p>
           <h2 className="mt-2 text-3xl font-bold text-[#173d2d]">영상으로 참고하기</h2>
         </div>
-        <VideoCards videos={videos} />
+        <div className="grid gap-8">
+          <VideoGroup title="의학정보 영상" videos={medicalVideos} />
+          <VideoGroup title="식이요법 영상" videos={dietVideos} />
+          <VideoGroup title="운동요법 영상" videos={exerciseVideos} />
+          <VideoGroup title="생활관리 영상" videos={lifestyleVideos} />
+        </div>
       </section>
 
       <section className="mx-auto max-w-[1440px] px-5 pb-12 sm:px-8 lg:px-12">
@@ -206,7 +334,7 @@ export default async function DiseaseDetailPage({
                   </p>
                 </div>
                 <Link
-                  href={`/remedies#${experience.id}`}
+                  href={`/experiences/${experience.slug}`}
                   className="mt-5 inline-flex rounded-lg border border-[#174330] px-4 py-2.5 text-sm font-bold text-[#174330] transition hover:bg-[#eef6e9]"
                 >
                   경험담 읽기
@@ -216,10 +344,32 @@ export default async function DiseaseDetailPage({
           </div>
         ) : (
           <div className="rounded-lg border border-[#dde6d7] bg-white p-6 text-base leading-7 text-[#526257] shadow-sm">
-            아직 연결된 경험담 샘플이 없습니다. 경험을 공유하려면 정보 등록 페이지를 이용해 주세요.
+            아직 등록된 관련 경험담이 없습니다.
           </div>
         )}
+        <Link
+          href={`/submit?disease=${encodeURIComponent(disease.slug)}`}
+          className="mt-6 inline-flex min-h-11 items-center rounded-lg bg-[#174330] px-4 py-2.5 text-sm font-bold text-white transition hover:bg-[#255f42]"
+        >
+          이 질병에 대한 경험담 공유하기
+        </Link>
       </section>
+
+      {affiliateProducts.length > 0 ? (
+        <section className="mx-auto max-w-[1440px] px-5 pb-12 sm:px-8 lg:px-12">
+          <div className="mb-5">
+            <p className="text-sm font-bold text-[#7a6230]">건강관리 도구 안내</p>
+            <h2 className="mt-2 text-3xl font-bold text-[#173d2d]">기록과 상담 준비에 참고할 수 있는 도구</h2>
+            <p className="mt-3 max-w-4xl text-base leading-7 text-[#526257]">
+              아래 항목은 증상 기록과 생활관리 정리에 참고할 수 있는 도구 예시입니다. 특정 제품 구매나 치료 효과를 보장하지 않습니다.
+            </p>
+          </div>
+          <AffiliateProductCards products={affiliateProducts} />
+          <div className="mt-5">
+            <AffiliateDisclaimer compact />
+          </div>
+        </section>
+      ) : null}
 
       <MedicalDisclaimer />
     </main>
@@ -275,6 +425,45 @@ function ChecklistCard({ title, items }: { title: string; items: string[] }) {
       </ul>
     </article>
   );
+}
+
+function TagList({ title, items, color }: { title: string; items: string[]; color: "green" | "red" }) {
+  const className =
+    color === "green"
+      ? "rounded-full bg-[#eef6e9] px-3 py-1.5 text-sm font-bold text-[#2f6c48]"
+      : "rounded-full bg-[#fff0ea] px-3 py-1.5 text-sm font-bold text-[#9a4d3c]";
+
+  return (
+    <div className="mt-5">
+      <p className="text-sm font-bold text-[#526257]">{title}</p>
+      <div className="mt-2 flex flex-wrap gap-2">
+        {items.map((item) => (
+          <span key={item} className={className}>
+            {item}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function VideoGroup({ title, videos }: { title: string; videos: ReturnType<typeof getVideosByDisease> }) {
+  if (videos.length === 0) return null;
+
+  return (
+    <div>
+      <h3 className="mb-4 text-2xl font-bold text-[#1b4631]">{title}</h3>
+      <VideoCards videos={videos} />
+    </div>
+  );
+}
+
+function getVideoGroup(category: string): "medical" | "diet" | "exercise" | "lifestyle" {
+  const normalized = category.toLowerCase();
+  if (normalized === "diet" || category.includes("식이") || category.includes("식습관")) return "diet";
+  if (normalized === "exercise" || category.includes("운동")) return "exercise";
+  if (normalized === "medical" || category.includes("의학") || category.includes("응급") || category.includes("주의")) return "medical";
+  return "lifestyle";
 }
 
 function ExternalMedicalCards({ resources }: { resources: ExternalMedicalResource[] }) {

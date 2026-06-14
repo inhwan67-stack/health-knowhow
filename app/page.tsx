@@ -6,7 +6,8 @@ import MedicalDisclaimer from "./components/MedicalDisclaimer";
 import { ArticleCards, VideoCards } from "./components/ResourceCards";
 import { getArticles } from "@/data/articles";
 import { getDiseases } from "@/data/diseases";
-import { getExperiences } from "@/data/experiences";
+import { getApprovedExperiences } from "@/data/experiences";
+import { getSymptoms } from "@/data/symptoms";
 import { getVideos } from "@/data/videos";
 
 export const dynamic = "force-dynamic";
@@ -26,11 +27,27 @@ const platformFeatures = [
   },
 ];
 
+const careSummaryCards = [
+  {
+    title: "증상별 식이요법 참고",
+    description: "검색어와 연결된 질병 정보를 기준으로 식재료, 주의 음식, 식사 습관을 함께 확인합니다.",
+  },
+  {
+    title: "증상별 운동요법 참고",
+    description: "통증 정도와 개인 상태에 따라 조절이 필요한 생활관리 참고 운동을 정리합니다.",
+  },
+  {
+    title: "관련 영상자료 모아보기",
+    description: "의학정보, 식이요법, 운동요법, 생활관리 영상을 구분해 검색 링크 중심으로 제공합니다.",
+  },
+];
+
 export default function Home() {
   const diseases = getDiseases();
   const videos = getVideos();
   const articles = getArticles();
-  const experiences = getExperiences();
+  const experiences = getApprovedExperiences();
+  const symptoms = getSymptoms();
   const featuredVideos = videos.slice(0, 3);
   const featuredArticles = articles.slice(0, 3);
   const recentExperiences = experiences.slice(0, 3);
@@ -100,7 +117,27 @@ export default function Home() {
         </div>
       </section>
 
-      <MainDiseaseSearch diseases={diseases} />
+      <section className="mx-auto max-w-[1440px] px-5 pb-14 sm:px-8 lg:px-12">
+        <div className="mb-8">
+          <p className="text-sm font-bold text-[#2f6c48]">생활관리 자료 확장</p>
+          <h2 className="mt-2 text-3xl font-bold text-[#173d2d] sm:text-4xl">
+            운동요법과 식이요법까지 함께 확인하세요
+          </h2>
+          <p className="mt-4 max-w-3xl text-lg leading-8 text-[#526257]">
+            아래 자료는 진단이나 치료가 아니라 검색어와 등록된 건강정보를 바탕으로 정리한 생활관리 참고자료입니다.
+          </p>
+        </div>
+        <div className="grid gap-5 md:grid-cols-3">
+          {careSummaryCards.map((card) => (
+            <article key={card.title} className="rounded-lg border border-[#dde6d7] bg-white p-6 shadow-sm">
+              <h3 className="text-2xl font-bold text-[#1b4631]">{card.title}</h3>
+              <p className="mt-4 text-base leading-8 text-[#526257]">{card.description}</p>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <MainDiseaseSearch diseases={diseases} symptoms={symptoms} />
 
       <section id="video-resources" className="mx-auto max-w-[1440px] scroll-mt-28 px-5 py-14 sm:px-8 lg:px-12">
         <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
@@ -140,7 +177,7 @@ export default function Home() {
               개인 경험담은 의료정보와 구분되는 참고자료이며 진단이나 치료를 대신하지 않습니다.
             </p>
           </div>
-          <Link href="/remedies" className="w-fit rounded-lg border border-[#174330] bg-white px-4 py-2.5 text-sm font-bold text-[#174330] shadow-sm hover:bg-[#eef6e9]">
+          <Link href="/experiences" className="w-fit rounded-lg border border-[#174330] bg-white px-4 py-2.5 text-sm font-bold text-[#174330] shadow-sm hover:bg-[#eef6e9]">
             경험담 더 보기
           </Link>
         </div>
@@ -156,7 +193,7 @@ export default function Home() {
               <h3 className="mt-2 text-xl font-bold leading-7 text-[#1b4631]">{experience.title}</h3>
               <p className="mt-3 text-base leading-7 text-[#526257]">{experience.symptomDescription}</p>
               <Link
-                href={`/remedies#${experience.id}`}
+                href={`/experiences/${experience.slug}`}
                 className="mt-5 inline-flex rounded-lg border border-[#174330] px-4 py-2.5 text-sm font-bold text-[#174330] transition hover:bg-[#eef6e9]"
               >
                 경험담 읽기

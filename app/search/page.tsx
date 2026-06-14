@@ -2,9 +2,13 @@ import Link from "next/link";
 import HomeSearch from "../components/HomeSearch";
 import MedicalDisclaimer from "../components/MedicalDisclaimer";
 import SearchResultsTabs from "../components/SearchResultsTabs";
+import { searchAffiliateProducts } from "@/data/affiliateProducts";
 import { getDiseases } from "@/data/diseases";
-import { getExperiences } from "@/data/experiences";
+import { getDetailedDietGuides } from "@/data/dietGuides";
+import { getExerciseGuides } from "@/data/exercises";
+import { getApprovedExperiences } from "@/data/experiences";
 import { getFoodGuides } from "@/data/foods";
+import { getSymptoms } from "@/data/symptoms";
 import { getVideos } from "@/data/videos";
 import { searchExternalMedicalSources } from "@/services/medicalSources";
 
@@ -18,8 +22,12 @@ export default async function SearchPage({
   const { q = "" } = await searchParams;
   const diseases = getDiseases();
   const foodGuides = getFoodGuides();
+  const detailedDietGuides = getDetailedDietGuides();
+  const exerciseGuides = getExerciseGuides();
   const videos = getVideos();
-  const experiences = getExperiences();
+  const experiences = getApprovedExperiences();
+  const symptoms = getSymptoms();
+  const affiliateProducts = searchAffiliateProducts(q);
   const externalResources = await searchExternalMedicalSources(q);
 
   return (
@@ -46,8 +54,12 @@ export default async function SearchPage({
           query={q}
           diseases={diseases}
           foodGuides={foodGuides}
+          detailedDietGuides={detailedDietGuides}
+          exerciseGuides={exerciseGuides}
           videos={videos}
           experiences={experiences}
+          symptoms={symptoms}
+          affiliateProducts={affiliateProducts}
           externalResources={externalResources}
         />
       </section>

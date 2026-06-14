@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 import type { HospitalVisitStatus, SymptomRecord } from "@/types/health";
@@ -27,7 +28,6 @@ export default function RecordsClient({ initialSymptomName = "" }: { initialSymp
   const [form, setForm] = useState<RecordFormState>({ ...defaultForm, symptomName: initialSymptomName });
   const [records, setRecords] = useState<SymptomRecord[]>([]);
   const [expandedRecordId, setExpandedRecordId] = useState<string | null>(null);
-  const [premiumMessage, setPremiumMessage] = useState("");
 
   useEffect(() => {
     queueMicrotask(() => {
@@ -81,10 +81,6 @@ export default function RecordsClient({ initialSymptomName = "" }: { initialSymp
     window.localStorage.removeItem(STORAGE_KEY);
     setRecords([]);
     setExpandedRecordId(null);
-  };
-
-  const showPremiumMessage = () => {
-    setPremiumMessage("이 기능은 추후 프리미엄 기능으로 제공될 예정입니다.");
   };
 
   return (
@@ -222,23 +218,20 @@ export default function RecordsClient({ initialSymptomName = "" }: { initialSymp
         <section className="rounded-lg border border-[#dde6d7] bg-white p-5 shadow-sm">
           <p className="text-sm font-extrabold text-[#2f6c48]">프리미엄 기능 준비</p>
           <h2 className="mt-2 text-xl font-bold text-[#173d2d]">기록을 더 쉽게 정리하기</h2>
+          <p className="mt-3 rounded-lg bg-[#f5f0e4] p-4 text-sm font-bold leading-6 text-[#596344]">
+            이 기능은 추후 프리미엄 기능으로 제공될 예정입니다.
+          </p>
           <div className="mt-5 grid gap-3">
             {["PDF로 정리하기", "병원 상담 질문지 만들기", "증상 변화 그래프 보기"].map((label) => (
-              <button
+              <Link
                 key={label}
-                type="button"
-                onClick={showPremiumMessage}
+                href="/premium"
                 className="min-h-11 rounded-lg border border-[#bcd2b2] px-4 py-2.5 text-left text-sm font-bold text-[#174330] transition hover:bg-[#eef6e9]"
               >
                 {label}
-              </button>
+              </Link>
             ))}
           </div>
-          {premiumMessage ? (
-            <p className="mt-4 rounded-lg bg-[#f5f0e4] p-4 text-sm font-bold leading-6 text-[#596344]">
-              {premiumMessage}
-            </p>
-          ) : null}
         </section>
       </aside>
 
@@ -408,10 +401,7 @@ function summarize(value: string) {
 }
 
 function formatDateTime(value: string) {
-  return new Intl.DateTimeFormat("ko-KR", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(new Date(value));
+  return value.replace("T", " ").slice(0, 16);
 }
 
 const inputClassName =

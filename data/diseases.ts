@@ -56,22 +56,25 @@ const doctorQuestionsBySlug: Record<string, string[]> = {
 export function getDiseases(): Disease[] {
   return readCsvRows("diseases.csv").map((row) => {
     const symptoms = splitList(row.symptoms);
+    const relatedSymptoms = splitList(row.relatedSymptoms);
     const causes = splitList(row.causes);
     const lifestyle = splitList(row.lifestyle);
     const diet = splitList(row.diet);
     const recommendedFoods = splitList(row.recommendedFoods);
     const avoidFoods = splitList(row.avoidFoods);
     const category = row.category || "기타";
-    const departments = departmentByCategory[category] ?? ["가정의학과"];
+    const departments = splitList(row.department).length > 0 ? splitList(row.department) : departmentByCategory[category] ?? ["가정의학과"];
 
     return {
       id: row.id,
-      slug: row.id,
+      slug: row.slug || row.id,
       name: row.name,
       category,
       summary: `${symptoms.slice(0, 2).join(", ")} 등을 중심으로 생활관리와 식이요법을 확인합니다.`,
-      description: `${row.name} 관련 주요 증상, 원인, 생활관리, 식이요법과 병원 방문 전 확인할 내용을 정리했습니다.`,
-      relatedSymptoms: symptoms,
+      description:
+        row.description ||
+        `${row.name} 관련 주요 증상, 원인, 생활관리, 식이요법과 병원 방문 전 확인할 내용을 정리했습니다.`,
+      relatedSymptoms: relatedSymptoms.length > 0 ? relatedSymptoms : symptoms,
       symptoms,
       causes,
       lifestyle,
@@ -79,16 +82,30 @@ export function getDiseases(): Disease[] {
       recommendedFoods,
       avoidFoods,
       warning: row.warning,
-      warningSigns: warningSignsBySlug[row.id] ?? [row.warning].filter(Boolean),
+      warningSigns: splitList(row.warningSigns).length > 0 ? splitList(row.warningSigns) : warningSignsBySlug[row.id] ?? [row.warning].filter(Boolean),
       department: departments,
       departments,
-      doctorQuestions: doctorQuestionsBySlug[row.id] ?? [
-        "현재 증상에 어떤 검사가 필요한가요?",
-        "생활관리에서 가장 먼저 조정할 부분은 무엇인가요?",
-        "다시 진료를 받아야 하는 증상은 무엇인가요?",
-      ],
-      sourceRefs: ["MedlinePlus", "NHS", "CDC", "WHO ICD"],
-      keywords: [row.name, category, ...symptoms, ...causes, ...recommendedFoods, ...avoidFoods].filter(Boolean),
+      doctorQuestions:
+        splitList(row.doctorQuestions).length > 0
+          ? splitList(row.doctorQuestions)
+          : doctorQuestionsBySlug[row.id] ?? [
+              "현재 증상에 어떤 검사가 필요한가요?",
+              "생활관리에서 가장 먼저 조정할 부분은 무엇인가요?",
+              "다시 진료를 받아야 하는 증상은 무엇인가요?",
+            ],
+      sourceRefs: splitList(row.sourceRefs).length > 0 ? splitList(row.sourceRefs) : ["MedlinePlus", "NHS", "CDC", "WHO ICD"],
+      searchKeywords: splitList(row.searchKeywords),
+      keywords: [
+        row.name,
+        row.slug,
+        category,
+        ...symptoms,
+        ...relatedSymptoms,
+        ...causes,
+        ...recommendedFoods,
+        ...avoidFoods,
+        ...splitList(row.searchKeywords),
+      ].filter(Boolean),
     };
   });
 }
