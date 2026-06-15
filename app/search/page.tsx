@@ -41,7 +41,7 @@ export default async function SearchPage({
             건강정보 통합 검색
           </h1>
           <p className="mt-4 max-w-3xl text-lg leading-8 text-[#355845]">
-            질병명이나 증상을 입력하면 관련 질병정보, 식이요법, 영상자료, 경험담을 샘플 데이터에서 함께 찾아봅니다.
+            질병명이나 증상을 입력하면 관련 질병정보, 식이요법, 영상자료, 경험담을 등록된 건강정보에서 함께 찾아봅니다.
           </p>
           <div className="mt-6 max-w-4xl">
             <HomeSearch />

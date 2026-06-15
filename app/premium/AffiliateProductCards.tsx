@@ -5,7 +5,7 @@ import type { AffiliateProduct } from "@/data/affiliateProducts";
 export default function AffiliateProductCards({ products }: { products: AffiliateProduct[] }) {
   const openProduct = (product: AffiliateProduct) => {
     if (!product.url) {
-      window.alert("제휴 상품 연결은 준비 중입니다.");
+      window.alert("현재 등록된 외부 링크가 없습니다. 관련 콘텐츠를 계속 보강하고 있습니다.");
       return;
     }
 

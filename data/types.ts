@@ -52,6 +52,7 @@ export type VideoResource = {
   summary: string;
   url: string;
   category: string;
+  thumbnail?: string;
 };
 
 export type ArticleResource = {

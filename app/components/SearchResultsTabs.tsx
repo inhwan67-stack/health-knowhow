@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import Link from "next/link";
 import AffiliateProductCards from "@/app/premium/AffiliateProductCards";
+import { VideoCard } from "./ResourceCards";
 import type { AffiliateProduct } from "@/data/affiliateProducts";
 import type { DietGuide, Disease, ExerciseGuide, Experience, FoodGuide, Symptom, VideoResource } from "@/data/types";
 import type { ExternalMedicalResource } from "@/services/medicalSources";
@@ -160,14 +161,7 @@ export default function SearchResultsTabs({
             {results.videoMatches.length > 0 && (
               <CardGrid>
                 {results.videoMatches.map((video) => (
-                  <article key={video.id} className="rounded-lg border border-[#dde6d7] bg-white p-5 shadow-sm">
-                    <p className="text-sm font-bold text-[#2f6c48]">{video.channel}</p>
-                    <h3 className="mt-2 text-xl font-bold text-[#1b4631]">{video.title}</h3>
-                    <p className="mt-3 text-base leading-7 text-[#526257]">{video.summary}</p>
-                    <a href={video.url} target="_blank" rel="noreferrer" className="mt-4 inline-flex rounded-lg border border-[#174330] px-4 py-2 text-sm font-bold text-[#174330]">
-                      관련 영상 보기
-                    </a>
-                  </article>
+                  <VideoCard key={video.id} video={video} categoryLabel={getVideoCategoryLabel(video.category)} />
                 ))}
               </CardGrid>
             )}
@@ -215,7 +209,7 @@ export default function SearchResultsTabs({
         <SectionHeader
           eyebrow="식이요법 영상자료"
           title="식습관 영상으로 참고하기"
-          description="영상자료는 제목, 채널명, 짧은 요약과 검색 링크 중심의 mock 자료입니다."
+          description="영상자료는 제목, 채널명, 짧은 요약과 검색 링크 중심의 참고자료입니다."
         />
         {results.dietVideoMatches.length > 0 ? <VideoResultGrid videos={results.dietVideoMatches} /> : <EmptyState text="검색어와 연결된 식이요법 영상자료가 없습니다." />}
       </section>
@@ -270,7 +264,7 @@ export default function SearchResultsTabs({
             <AiSummaryBlock title="참고할 수 있는 운동요법" items={results.exerciseMatches.flatMap((guide) => guide.recommendedExercises).slice(0, 5)} emptyText="연결된 운동요법이 없습니다." />
             <AiSummaryBlock title="주의가 필요한 신호" items={results.diseaseMatches.flatMap((disease) => disease.warningSigns).slice(0, 5)} emptyText="등록된 주의 신호가 없습니다." />
             <AiSummaryBlock title="병원 방문 전 확인할 내용" items={results.diseaseMatches.flatMap((disease) => disease.doctorQuestions).slice(0, 5)} emptyText="등록된 질문지가 없습니다." />
-            <AiSummaryBlock title="관련 외부 의학자료 보기" items={externalResources.map((resource) => resource.title).slice(0, 5)} emptyText="현재 연결된 외부 자료가 없습니다." />
+            <AiSummaryBlock title="관련 외부 의학자료 보기" items={externalResources.map((resource) => resource.title).slice(0, 5)} emptyText="현재 등록된 관련 자료가 많지 않습니다. 관련 콘텐츠를 계속 보강하고 있습니다." />
           </div>
           <p className="mt-5 rounded-lg bg-white p-4 text-sm font-semibold leading-6 text-[#526257]">
             이 내용은 진단이 아니라 검색어와 등록된 건강정보를 바탕으로 정리한 참고자료입니다. 정확한 진단과 치료는 의료기관 상담이 필요합니다.
@@ -298,7 +292,7 @@ export default function SearchResultsTabs({
                 <a
                   href={resource.url}
                   target="_blank"
-                  rel="noreferrer"
+                  rel="noopener noreferrer"
                   className="mt-5 inline-flex rounded-lg border border-[#2b6f87] px-4 py-2.5 text-sm font-bold text-[#2b6f87] transition hover:bg-[#edf8fb]"
                 >
                   원문 링크
@@ -307,7 +301,7 @@ export default function SearchResultsTabs({
             ))}
           </CardGrid>
         ) : (
-          <EmptyState text="현재 연결된 외부 참고자료가 없습니다." />
+          <EmptyState text="현재 등록된 관련 자료가 많지 않습니다. 관련 콘텐츠를 계속 보강하고 있습니다." />
         )}
       </section>
 
@@ -391,9 +385,7 @@ function ExerciseGuideCard({ guide }: { guide: ExerciseGuide }) {
       <ListLine label="주의 운동" items={guide.cautionExercises} color="red" />
       <p className="mt-3 text-sm leading-6 text-[#526257]">빈도: {guide.frequency} · 시간: {guide.duration}</p>
       <p className="mt-3 rounded-lg bg-[#fffdf7] p-3 text-sm leading-6 text-[#5b6146]">{guide.warning}</p>
-      <a href={guide.videoSearchUrl} target="_blank" rel="noreferrer" className="mt-4 inline-flex min-h-11 items-center rounded-lg border border-[#174330] px-4 py-2 text-sm font-bold text-[#174330]">
-        관련 운동 영상 보기
-      </a>
+      <ExternalActionLink href={guide.videoSearchUrl} label="관련 운동 영상 보기" />
     </article>
   );
 }
@@ -408,9 +400,7 @@ function DietGuideCard({ guide }: { guide: DietGuide }) {
       <ListLine label="주의 음식" items={guide.cautionIngredients} color="red" />
       <ListLine label="식사 팁" items={guide.mealTips} color="green" />
       <p className="mt-3 rounded-lg bg-[#fffdf7] p-3 text-sm leading-6 text-[#5b6146]">{guide.warning}</p>
-      <a href={guide.videoSearchUrl} target="_blank" rel="noreferrer" className="mt-4 inline-flex min-h-11 items-center rounded-lg border border-[#174330] px-4 py-2 text-sm font-bold text-[#174330]">
-        관련 식이요법 영상 보기
-      </a>
+      <ExternalActionLink href={guide.videoSearchUrl} label="관련 식이요법 영상 보기" />
     </article>
   );
 }
@@ -419,16 +409,34 @@ function VideoResultGrid({ videos }: { videos: VideoResource[] }) {
   return (
     <CardGrid>
       {videos.map((video) => (
-        <article key={video.id} className="rounded-lg border border-[#dde6d7] bg-white p-5 shadow-sm">
-          <p className="text-sm font-bold text-[#2f6c48]">{getVideoCategoryLabel(video.category)} · {video.channel}</p>
-          <h3 className="mt-2 text-xl font-bold text-[#1b4631]">{video.title}</h3>
-          <p className="mt-3 text-base leading-7 text-[#526257]">{video.summary}</p>
-          <a href={video.url} target="_blank" rel="noreferrer" className="mt-4 inline-flex min-h-11 items-center rounded-lg border border-[#174330] px-4 py-2 text-sm font-bold text-[#174330]">
-            영상 검색 보기
-          </a>
-        </article>
+        <VideoCard key={video.id} video={video} categoryLabel={getVideoCategoryLabel(video.category)} />
       ))}
     </CardGrid>
+  );
+}
+
+function ExternalActionLink({ href, label }: { href: string; label: string }) {
+  if (!href?.trim()) {
+    return (
+      <button
+        type="button"
+        disabled
+        className="mt-4 inline-flex min-h-11 cursor-not-allowed items-center rounded-lg border border-[#bcd2b2] bg-[#f4faf0] px-4 py-2 text-sm font-bold text-[#6a776e]"
+      >
+        관련 링크가 아직 등록되지 않았습니다.
+      </button>
+    );
+  }
+
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="mt-4 inline-flex min-h-11 items-center rounded-lg border border-[#174330] px-4 py-2 text-sm font-bold text-[#174330]"
+    >
+      {label}
+    </a>
   );
 }
 

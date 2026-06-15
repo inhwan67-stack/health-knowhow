@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" role="img" aria-label="Sleep stretching thumbnail">
+  <rect width="1280" height="720" fill="#eef3f7"/>
+  <path d="M0 530c150-80 320-88 520-25 220 70 450 55 760-55v270H0z" fill="#dcebd4"/>
+  <circle cx="360" cy="215" r="52" fill="#2f6c48"/>
+  <path d="M360 280l-80 115h170l120 95M440 395l-70 120" fill="none" stroke="#174330" stroke-width="26" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="660" y="230" fill="#174330" font-family="Arial, sans-serif" font-size="62" font-weight="700">Stretching</text>
+  <text x="660" y="315" fill="#526257" font-family="Arial, sans-serif" font-size="36">Relax before sleep</text>
+</svg>

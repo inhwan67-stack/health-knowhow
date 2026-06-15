@@ -7,6 +7,7 @@ import { ArticleCards, VideoCards } from "./components/ResourceCards";
 import { getArticles } from "@/data/articles";
 import { getDiseases } from "@/data/diseases";
 import { getApprovedExperiences } from "@/data/experiences";
+import { getRecentGuides } from "@/data/guides";
 import { getSymptoms } from "@/data/symptoms";
 import { getVideos } from "@/data/videos";
 
@@ -47,6 +48,7 @@ export default function Home() {
   const videos = getVideos();
   const articles = getArticles();
   const experiences = getApprovedExperiences();
+  const guides = getRecentGuides(3);
   const symptoms = getSymptoms();
   const featuredVideos = videos.slice(0, 3);
   const featuredArticles = articles.slice(0, 3);
@@ -86,7 +88,7 @@ export default function Home() {
           </div>
 
           <aside className="rounded-lg border border-[#c7d9bd] bg-white/90 p-6 shadow-[0_20px_70px_rgba(31,75,54,0.12)]">
-            <p className="text-sm font-bold text-[#2f6c48]">현재 샘플 데이터</p>
+            <p className="text-sm font-bold text-[#2f6c48]">현재 등록된 건강정보</p>
             <p className="mt-3 text-5xl font-extrabold text-[#174330]">{diseases.length}개</p>
             <p className="mt-3 text-base leading-7 text-[#526257]">
               당뇨, 고혈압, 위염, 역류성 식도염, 관절염, 불면증 등 자주 찾는 주제를 먼저 구성했습니다.
@@ -143,7 +145,7 @@ export default function Home() {
         <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="text-sm font-bold text-[#2f6c48]">추천 영상자료</p>
-            <h2 className="mt-2 text-3xl font-bold text-[#173d2d] sm:text-4xl">샘플 영상 카드</h2>
+            <h2 className="mt-2 text-3xl font-bold text-[#173d2d] sm:text-4xl">건강관리 영상자료</h2>
             <p className="mt-3 max-w-3xl text-lg leading-8 text-[#526257]">
               영상자료는 참고용이며 의학적 진단이나 치료를 대신하지 않습니다.
             </p>
@@ -199,6 +201,37 @@ export default function Home() {
                 경험담 읽기
               </Link>
             </article>
+          ))}
+        </div>
+      </section>
+
+      <section id="health-guides" className="mx-auto max-w-[1440px] scroll-mt-28 px-5 py-14 sm:px-8 lg:px-12">
+        <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-sm font-bold text-[#2f6c48]">건강관리 가이드</p>
+            <h2 className="mt-2 text-3xl font-bold text-[#173d2d] sm:text-4xl">증상별 건강관리 가이드</h2>
+            <p className="mt-3 max-w-3xl text-lg leading-8 text-[#526257]">
+              생활관리, 식이요법, 활동 참고, 병원 방문 전 체크리스트를 한 번에 정리한 참고자료입니다.
+            </p>
+          </div>
+          <Link href="/guides" className="w-fit rounded-lg border border-[#174330] bg-white px-4 py-2.5 text-sm font-bold text-[#174330] shadow-sm hover:bg-[#eef6e9]">
+            가이드 더 보기
+          </Link>
+        </div>
+        <div className="grid gap-5 md:grid-cols-3">
+          {guides.map((guide) => (
+            <Link
+              key={guide.id}
+              href={`/guides/${guide.slug}`}
+              className="rounded-lg border border-[#dde6d7] bg-white p-6 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+            >
+              <span className="rounded-full bg-[#eef6e9] px-3 py-1.5 text-xs font-bold text-[#2f6c48]">
+                {guide.category}
+              </span>
+              <h3 className="mt-5 text-xl font-bold leading-7 text-[#1b4631]">{guide.title}</h3>
+              <p className="mt-3 text-base leading-7 text-[#526257]">{guide.summary}</p>
+              <p className="mt-5 text-sm font-bold text-[#174330]">자세히 보기</p>
+            </Link>
           ))}
         </div>
       </section>

@@ -8,7 +8,7 @@ import { affiliateProducts } from "@/data/affiliateProducts";
 export const metadata: Metadata = {
   title: "Health Knowhow 프리미엄 기능 안내 | 증상 기록과 병원 방문 준비 도구",
   description:
-    "Health Knowhow 프리미엄 기능은 증상 기록, 병원 방문 전 체크리스트, PDF 리포트, 식단 기록표 등 건강정보 정리 기능을 준비 중입니다.",
+    "Health Knowhow 프리미엄 기능은 증상 기록, 병원 방문 전 체크리스트, PDF 리포트, 식단 기록표 등 건강정보 정리 기능을 안내합니다.",
 };
 
 const plans = [
@@ -29,7 +29,7 @@ const plans = [
   {
     name: "베이직",
     price: "월 3,900원",
-    badge: "준비 중",
+    badge: "제공 예정",
     features: [
       "증상 기록 무제한 저장 예정",
       "병원 방문 전 체크리스트 저장 예정",
@@ -37,13 +37,13 @@ const plans = [
       "개인 건강 메모 관리 예정",
       "가족 건강 기록 1명 추가 예정",
     ],
-    buttonLabel: "준비 중",
+    buttonLabel: "제공 예정",
     current: false,
   },
   {
     name: "프리미엄",
     price: "월 9,900원",
-    badge: "준비 중",
+    badge: "제공 예정",
     features: [
       "PDF 건강 리포트 생성 예정",
       "병원 상담 질문지 자동 생성 예정",
@@ -52,7 +52,7 @@ const plans = [
       "가족 건강 기록 관리 예정",
       "개인 맞춤 건강자료 모음 예정",
     ],
-    buttonLabel: "준비 중",
+    buttonLabel: "제공 예정",
     current: false,
   },
 ];
@@ -70,19 +70,19 @@ const premiumFeatures = [
   {
     title: "PDF 건강 리포트",
     description:
-      "내 증상 기록과 생활습관 정보를 PDF 형태로 정리해 보관하거나 병원 상담 시 참고할 수 있도록 준비 중입니다.",
+      "내 증상 기록과 생활습관 정보를 PDF 형태로 정리해 보관하거나 병원 상담 시 참고할 수 있도록 제공될 예정입니다.",
   },
   {
     title: "식단 기록표",
-    description: "질병별로 주의가 필요한 음식과 도움이 될 수 있는 식습관을 기록할 수 있도록 준비 중입니다.",
+    description: "질병별로 주의가 필요한 음식과 도움이 될 수 있는 식습관을 기록할 수 있도록 제공될 예정입니다.",
   },
   {
     title: "증상 변화 그래프",
-    description: "불편감 정도와 증상 변화를 시간 흐름에 따라 확인할 수 있도록 준비 중입니다.",
+    description: "불편감 정도와 증상 변화를 시간 흐름에 따라 확인할 수 있도록 제공될 예정입니다.",
   },
   {
     title: "가족 건강 기록",
-    description: "부모님, 배우자, 자녀 등 가족의 건강 기록을 함께 관리할 수 있도록 준비 중입니다.",
+    description: "부모님, 배우자, 자녀 등 가족의 건강 기록을 함께 관리할 수 있도록 제공될 예정입니다.",
   },
 ];
 
@@ -95,7 +95,7 @@ export default function PremiumPage() {
             Health Knowhow
           </Link>
           <p className="mt-6 w-fit rounded-full border border-[#b7d0ac] bg-white px-3 py-1.5 text-sm font-bold text-[#2f6c48]">
-            준비 중인 프리미엄 기능
+            프리미엄 기능 안내
           </p>
           <h1 className="mt-5 text-4xl font-extrabold leading-tight text-[#123827] sm:text-5xl">
             Health Knowhow 프리미엄
@@ -114,7 +114,7 @@ export default function PremiumPage() {
       <section className="mx-auto max-w-[1440px] px-5 py-12 sm:px-8 lg:px-12">
         <div className="mb-6">
           <p className="text-sm font-bold text-[#2f6c48]">요금제 구조</p>
-          <h2 className="mt-2 text-3xl font-bold text-[#173d2d] sm:text-4xl">무료와 준비 중인 유료 기능</h2>
+          <h2 className="mt-2 text-3xl font-bold text-[#173d2d] sm:text-4xl">무료 기능과 확장 예정 기능</h2>
           <p className="mt-3 max-w-3xl text-base leading-7 text-[#526257]">
             현재 실제 결제 기능은 제공하지 않으며, 유료 플랜은 향후 제공을 위한 안내 상태입니다.
           </p>
@@ -165,7 +165,7 @@ export default function PremiumPage() {
           {premiumFeatures.map((feature) => (
             <article key={feature.title} className="rounded-lg border border-[#dde6d7] bg-white p-6 shadow-sm">
               <span className="rounded-full bg-[#f5f0e4] px-3 py-1.5 text-xs font-bold text-[#7a6230]">
-                추후 제공 예정
+                제공 예정 기능
               </span>
               <h3 className="mt-5 text-xl font-bold text-[#1b4631]">{feature.title}</h3>
               <p className="mt-3 text-base leading-7 text-[#526257]">{feature.description}</p>
@@ -176,7 +176,7 @@ export default function PremiumPage() {
 
       <section id="affiliate-products" className="mx-auto max-w-[1440px] scroll-mt-28 px-5 pb-12 sm:px-8 lg:px-12">
         <div className="mb-6">
-          <p className="text-sm font-bold text-[#2f6c48]">제휴 상품 mock 영역</p>
+          <p className="text-sm font-bold text-[#2f6c48]">건강관리 도구 안내</p>
           <h2 className="mt-2 text-3xl font-bold text-[#173d2d] sm:text-4xl">건강관리 도구 안내</h2>
           <p className="mt-3 max-w-3xl text-base leading-7 text-[#526257]">
             아래 항목은 건강정보 기록과 생활관리 정리에 참고할 수 있는 도구 예시입니다. 의료 효과를 보장하거나

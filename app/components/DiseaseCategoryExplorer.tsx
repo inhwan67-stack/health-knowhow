@@ -39,7 +39,7 @@ export default function DiseaseCategoryExplorer() {
                   ))
                 ) : (
                   <span className="rounded-full bg-[#f5f0e4] px-3 py-1.5 text-sm font-bold text-[#596344]">
-                    준비 중
+                    콘텐츠 보강 중
                   </span>
                 )}
               </div>

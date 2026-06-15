@@ -19,7 +19,7 @@ export default function VideosPage() {
             영상자료
           </h1>
           <p className="mt-4 max-w-3xl text-lg leading-8 text-[#355845]">
-            질병별로 참고할 수 있는 유튜브 영상 샘플을 모았습니다. 영상은 외부 링크로 이동하며,
+            질병별로 참고할 수 있는 건강관리 영상자료를 모았습니다. 영상은 외부 링크로 이동하며,
             임베드가 불가능한 영상도 연결할 수 있도록 버튼 방식으로 구성했습니다.
           </p>
         </div>

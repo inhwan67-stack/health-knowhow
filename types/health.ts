@@ -15,6 +15,31 @@ export type SymptomRecord = {
   createdAt: string;
 };
 
+export type Guide = {
+  id: string;
+  slug: string;
+  title: string;
+  category: string;
+  summary: string;
+  intro: string;
+  symptomsToCheck: string[];
+  relatedHealthInfo: string[];
+  warningSigns: string[];
+  lifestyleTips: string[];
+  dietTips: string[];
+  exerciseTips: string[];
+  cautionExerciseTips?: string[];
+  hospitalChecklist: string[];
+  doctorQuestions: string[];
+  relatedVideoIds: string[];
+  relatedArticleIds: string[];
+  relatedExperienceIds: string[];
+  seoTitle: string;
+  seoDescription: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type {
   ArticleResource,
   DietGuide,

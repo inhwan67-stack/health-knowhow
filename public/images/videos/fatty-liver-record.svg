@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" role="img" aria-label="Fatty liver record thumbnail">
+  <rect width="1280" height="720" fill="#f4faf0"/>
+  <circle cx="210" cy="160" r="130" fill="#dcebd4"/>
+  <rect x="690" y="120" width="360" height="420" rx="32" fill="#fffdf7"/>
+  <path d="M780 220h180M780 300h210M780 380h150" stroke="#2f6c48" stroke-width="22" stroke-linecap="round"/>
+  <path d="M210 405c90-130 265-145 350-42 68 82-2 190-130 185-115-5-225-42-220-143z" fill="#d9b96e"/>
+  <path d="M275 405c75-42 175-34 235 27" fill="none" stroke="#7a6230" stroke-width="18" stroke-linecap="round"/>
+  <text x="155" y="120" fill="#174330" font-family="Arial, sans-serif" font-size="58" font-weight="700">Liver Records</text>
+  <text x="155" y="620" fill="#526257" font-family="Arial, sans-serif" font-size="34">Lab values and habits</text>
+</svg>

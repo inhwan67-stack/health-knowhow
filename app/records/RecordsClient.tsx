@@ -216,10 +216,10 @@ export default function RecordsClient({ initialSymptomName = "" }: { initialSymp
         <GuideCard />
 
         <section className="rounded-lg border border-[#dde6d7] bg-white p-5 shadow-sm">
-          <p className="text-sm font-extrabold text-[#2f6c48]">프리미엄 기능 준비</p>
+          <p className="text-sm font-extrabold text-[#2f6c48]">프리미엄 기능 안내</p>
           <h2 className="mt-2 text-xl font-bold text-[#173d2d]">기록을 더 쉽게 정리하기</h2>
           <p className="mt-3 rounded-lg bg-[#f5f0e4] p-4 text-sm font-bold leading-6 text-[#596344]">
-            이 기능은 추후 프리미엄 기능으로 제공될 예정입니다.
+            이 기능은 프리미엄 확장 기능으로 제공될 예정입니다.
           </p>
           <div className="mt-5 grid gap-3">
             {["PDF로 정리하기", "병원 상담 질문지 만들기", "증상 변화 그래프 보기"].map((label) => (

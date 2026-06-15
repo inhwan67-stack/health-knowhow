@@ -6,6 +6,7 @@ import { useState } from "react";
 const navItems = [
   { label: "홈", href: "/" },
   { label: "질병정보", href: "/diseases" },
+  { label: "가이드", href: "/guides" },
   { label: "식이요법", href: "/foods" },
   { label: "영상자료", href: "/videos" },
   { label: "경험담", href: "/experiences" },

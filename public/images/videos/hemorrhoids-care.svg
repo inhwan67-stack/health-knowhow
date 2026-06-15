@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" role="img" aria-label="Hemorrhoids care thumbnail">
+  <rect width="1280" height="720" fill="#fff7f3"/>
+  <circle cx="240" cy="520" r="180" fill="#f3d3c5"/>
+  <rect x="150" y="135" width="390" height="350" rx="34" fill="#ffffff"/>
+  <path d="M260 350c40-115 160-115 200 0" fill="none" stroke="#9a4d3c" stroke-width="24" stroke-linecap="round"/>
+  <path d="M280 245h160M300 295h120" stroke="#2f6c48" stroke-width="20" stroke-linecap="round"/>
+  <text x="675" y="220" fill="#174330" font-family="Arial, sans-serif" font-size="62" font-weight="700">Care Notes</text>
+  <text x="675" y="305" fill="#526257" font-family="Arial, sans-serif" font-size="36">Symptoms and habits</text>
+  <path d="M675 415h320M675 485h240" stroke="#d9b96e" stroke-width="24" stroke-linecap="round"/>
+</svg>

@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" role="img" aria-label="Sleep routine thumbnail">
+  <rect width="1280" height="720" fill="#eef3f7"/>
+  <circle cx="980" cy="185" r="120" fill="#dcebd4"/>
+  <path d="M980 95a90 90 0 1 0 70 146 115 115 0 1 1-70-146z" fill="#7a8f7a"/>
+  <rect x="150" y="370" width="470" height="110" rx="32" fill="#ffffff"/>
+  <rect x="205" y="310" width="150" height="85" rx="24" fill="#cfe5c4"/>
+  <path d="M150 480h520" stroke="#174330" stroke-width="22" stroke-linecap="round"/>
+  <text x="690" y="370" fill="#174330" font-family="Arial, sans-serif" font-size="62" font-weight="700">Sleep Routine</text>
+  <text x="690" y="455" fill="#526257" font-family="Arial, sans-serif" font-size="36">Rest and rhythm</text>
+</svg>

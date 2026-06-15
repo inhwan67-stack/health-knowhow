@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" role="img" aria-label="Hypertension lifestyle thumbnail">
+  <rect width="1280" height="720" fill="#edf7e7"/>
+  <path d="M0 520c180-90 300-70 460-30 220 55 390 60 820-90v320H0z" fill="#d5e9cd"/>
+  <rect x="155" y="145" width="360" height="260" rx="34" fill="#fffdf7"/>
+  <path d="M230 285h70l35-76 58 142 42-66h55" fill="none" stroke="#9a4d3c" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="920" cy="300" r="110" fill="#ffffff" stroke="#2f6c48" stroke-width="14"/>
+  <path d="M920 300l58-58M920 300h-74" stroke="#2f6c48" stroke-width="18" stroke-linecap="round"/>
+  <text x="650" y="170" fill="#174330" font-family="Arial, sans-serif" font-size="58" font-weight="700">Blood Pressure</text>
+  <text x="650" y="465" fill="#526257" font-family="Arial, sans-serif" font-size="34">Lifestyle check</text>
+</svg>

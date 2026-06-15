@@ -127,7 +127,7 @@ export default async function DiseaseDetailPage({
                 <p className="rounded-lg bg-[#f5f0e4] p-4 text-sm leading-6 text-[#5b6146]">{foodGuide.note}</p>
               </div>
             ) : (
-              <p className="mt-3 text-base text-[#526257]">등록된 식이요법 샘플이 없습니다.</p>
+              <p className="mt-3 text-base text-[#526257]">현재 등록된 식이요법 자료가 많지 않습니다. 관련 콘텐츠를 계속 보강하고 있습니다.</p>
             )}
           </div>
 
@@ -169,7 +169,7 @@ export default async function DiseaseDetailPage({
                         disabled
                         className="mt-4 inline-flex cursor-not-allowed rounded-lg border border-[#bcd2b2] bg-[#f4faf0] px-4 py-2.5 text-sm font-bold text-[#6a776e]"
                       >
-                        병원 홈페이지 보기 준비 중
+                        병원 홈페이지 링크가 아직 등록되지 않았습니다.
                       </button>
                     )}
                   </article>
@@ -224,9 +224,7 @@ export default async function DiseaseDetailPage({
                 <TagList title="주의가 필요한 운동" items={guide.cautionExercises} color="red" />
                 <p className="mt-4 text-sm font-semibold text-[#526257]">빈도: {guide.frequency} · 시간: {guide.duration}</p>
                 <p className="mt-4 rounded-lg bg-[#fffdf7] p-4 text-sm leading-6 text-[#5b6146]">{guide.warning}</p>
-                <a href={guide.videoSearchUrl} target="_blank" rel="noreferrer" className="mt-5 inline-flex min-h-11 items-center rounded-lg border border-[#174330] px-4 py-2.5 text-sm font-bold text-[#174330] transition hover:bg-[#eef6e9]">
-                  관련 운동 영상 보기
-                </a>
+                <ExternalVideoLink href={guide.videoSearchUrl} label="관련 운동 영상 보기" />
               </article>
             ))}
           </div>
@@ -257,9 +255,7 @@ export default async function DiseaseDetailPage({
                 <TagList title="식사 습관 팁" items={guide.mealTips} color="green" />
                 <TagList title="피하면 좋은 식습관" items={guide.avoidPatterns} color="red" />
                 <p className="mt-4 rounded-lg bg-[#fffdf7] p-4 text-sm leading-6 text-[#5b6146]">{guide.warning}</p>
-                <a href={guide.videoSearchUrl} target="_blank" rel="noreferrer" className="mt-5 inline-flex min-h-11 items-center rounded-lg border border-[#174330] px-4 py-2.5 text-sm font-bold text-[#174330] transition hover:bg-[#eef6e9]">
-                  관련 식이요법 영상 보기
-                </a>
+                <ExternalVideoLink href={guide.videoSearchUrl} label="관련 식이요법 영상 보기" />
               </article>
             ))}
           </div>
@@ -447,6 +443,31 @@ function TagList({ title, items, color }: { title: string; items: string[]; colo
   );
 }
 
+function ExternalVideoLink({ href, label }: { href: string; label: string }) {
+  if (!href?.trim()) {
+    return (
+      <button
+        type="button"
+        disabled
+        className="mt-5 inline-flex min-h-11 cursor-not-allowed items-center rounded-lg border border-[#bcd2b2] bg-[#f4faf0] px-4 py-2.5 text-sm font-bold text-[#6a776e]"
+      >
+        관련 링크가 아직 등록되지 않았습니다.
+      </button>
+    );
+  }
+
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="mt-5 inline-flex min-h-11 items-center rounded-lg border border-[#174330] px-4 py-2.5 text-sm font-bold text-[#174330] transition hover:bg-[#eef6e9]"
+    >
+      {label}
+    </a>
+  );
+}
+
 function VideoGroup({ title, videos }: { title: string; videos: ReturnType<typeof getVideosByDisease> }) {
   if (videos.length === 0) return null;
 
@@ -470,7 +491,7 @@ function ExternalMedicalCards({ resources }: { resources: ExternalMedicalResourc
   if (resources.length === 0) {
     return (
       <div className="rounded-lg border border-[#dde6d7] bg-white p-6 text-base text-[#526257] shadow-sm">
-        현재 연결된 외부 의학 참고자료가 없습니다.
+        현재 등록된 관련 자료가 많지 않습니다. 관련 콘텐츠를 계속 보강하고 있습니다.
       </div>
     );
   }
