@@ -5,14 +5,14 @@ import { useState } from "react";
 
 const navItems = [
   { label: "홈", href: "/" },
+  { label: "건강정보", href: "/health-articles" },
   { label: "질병정보", href: "/diseases" },
   { label: "가이드", href: "/guides" },
-  { label: "식이요법", href: "/foods" },
+  { label: "경험공유", href: "/experiences" },
+  { label: "증상기록", href: "/my-records/new" },
+  { label: "병원 찾기", href: "/find-hospital" },
+  { label: "월간 리포트", href: "/monthly-report" },
   { label: "영상자료", href: "/videos" },
-  { label: "경험담", href: "/experiences" },
-  { label: "증상기록", href: "/records" },
-  { label: "프리미엄", href: "/premium" },
-  { label: "정보 등록", href: "/submit" },
 ];
 
 export default function SiteHeader() {

@@ -1,243 +1,98 @@
 import Link from "next/link";
-import DiseaseCategoryExplorer from "./components/DiseaseCategoryExplorer";
-import HomeSearch from "./components/HomeSearch";
-import MainDiseaseSearch from "./components/MainDiseaseSearch";
-import MedicalDisclaimer from "./components/MedicalDisclaimer";
-import { ArticleCards, VideoCards } from "./components/ResourceCards";
-import { getArticles } from "@/data/articles";
-import { getDiseases } from "@/data/diseases";
-import { getApprovedExperiences } from "@/data/experiences";
-import { getRecentGuides } from "@/data/guides";
-import { getSymptoms } from "@/data/symptoms";
-import { getVideos } from "@/data/videos";
+import {
+  ExperienceShareSection,
+  FinalMedicalNotice,
+  HealthBlogSection,
+  HospitalSearchSection,
+  MonthlyReportSection,
+  PrescriptionMedicationSection,
+  PwaSection,
+  ReferenceResourceSection,
+} from "./components/HomePlatformSections";
+import SymptomRecordSection from "./components/SymptomRecordSection";
 
 export const dynamic = "force-dynamic";
 
-const platformFeatures = [
-  {
-    title: "질병별 건강정보",
-    description: "증상, 원인, 생활관리, 식이요법, 추천 식재료를 한 화면에서 확인합니다.",
-  },
-  {
-    title: "영상과 외부 자료",
-    description: "유튜브 영상과 웹 자료는 제목, 출처, 짧은 요약, 링크 중심으로 정리합니다.",
-  },
-  {
-    title: "경험 공유",
-    description: "개인의 관리 경험을 참고하되, 의료 판단과 구분해서 안전하게 살펴봅니다.",
-  },
-];
-
-const careSummaryCards = [
-  {
-    title: "증상별 식이요법 참고",
-    description: "검색어와 연결된 질병 정보를 기준으로 식재료, 주의 음식, 식사 습관을 함께 확인합니다.",
-  },
-  {
-    title: "증상별 운동요법 참고",
-    description: "통증 정도와 개인 상태에 따라 조절이 필요한 생활관리 참고 운동을 정리합니다.",
-  },
-  {
-    title: "관련 영상자료 모아보기",
-    description: "의학정보, 식이요법, 운동요법, 생활관리 영상을 구분해 검색 링크 중심으로 제공합니다.",
-  },
+const heroStats = [
+  { label: "기록 영역", value: "증상·사진·약·방문" },
+  { label: "공유 원칙", value: "비공개 기본" },
+  { label: "정보 성격", value: "참고용 자료" },
 ];
 
 export default function Home() {
-  const diseases = getDiseases();
-  const videos = getVideos();
-  const articles = getArticles();
-  const experiences = getApprovedExperiences();
-  const guides = getRecentGuides(3);
-  const symptoms = getSymptoms();
-  const featuredVideos = videos.slice(0, 3);
-  const featuredArticles = articles.slice(0, 3);
-  const recentExperiences = experiences.slice(0, 3);
-
   return (
     <main className="min-h-screen bg-[#fbfaf5] text-[#173d2d]">
       <section className="relative overflow-hidden border-b border-[#dfe8d8] bg-[linear-gradient(135deg,#fffdf7_0%,#edf7e7_54%,#dcebd4_100%)]">
-        <div className="mx-auto grid max-w-[1440px] gap-10 px-5 py-10 sm:px-8 lg:grid-cols-[1fr_400px] lg:px-12 lg:py-16">
+        <div className="mx-auto grid max-w-[1440px] gap-10 px-5 py-12 sm:px-8 lg:grid-cols-[minmax(0,1fr)_420px] lg:px-12 lg:py-16">
           <div className="flex flex-col justify-center">
-            <p className="mb-5 w-fit rounded-full border border-[#b7d0ac] bg-white/85 px-4 py-2 text-sm font-bold text-[#2f6c48]">
-              질병별 건강정보 검색 플랫폼
+            <p className="mb-5 w-fit rounded-full border border-[#b7d0ac] bg-white/85 px-4 py-2 text-sm font-extrabold text-[#2f6c48]">
+              건강 경험 기록 플랫폼
             </p>
             <h1 className="max-w-5xl text-4xl font-extrabold leading-tight text-[#123827] sm:text-5xl lg:text-6xl">
-              증상과 질병명으로 필요한 건강정보를 빠르게 찾으세요
+              내 건강 경험을 기록하고, 비슷한 사례와 신뢰할 수 있는 정보를 함께 찾아보세요
             </h1>
             <p className="mt-6 max-w-4xl text-lg leading-8 text-[#355845] sm:text-xl sm:leading-9">
-              Health Knowhow는 질병별 증상, 생활관리, 식이요법, 영상자료, 사용자 경험담을 한곳에서
-              탐색할 수 있도록 확장한 건강정보 플랫폼입니다.
+              건강노하우는 증상 기록, 치료 경과, 사용자 경험, 건강정보 블로그, 병원 찾기를 한 곳에서 관리할 수 있는 건강 경험 플랫폼입니다.
             </p>
 
-            <div className="mt-8 max-w-5xl">
-              <HomeSearch />
+            <div className="mt-8 grid gap-3 sm:grid-cols-3">
+              <Link
+                className="rounded-lg border border-[#174330] bg-[#174330] px-5 py-3.5 text-center text-base font-bold text-white shadow-sm transition hover:bg-[#255f42]"
+                href="/my-records/new"
+              >
+                내 증상 기록하기
+              </Link>
+              <Link
+                className="rounded-lg border border-[#bcd2b2] bg-white px-5 py-3.5 text-center text-base font-bold text-[#174330] shadow-sm transition hover:bg-[#eef6e9]"
+                href="/health-articles"
+              >
+                건강정보 보기
+              </Link>
+              <Link
+                className="rounded-lg border border-[#bcd2b2] bg-white px-5 py-3.5 text-center text-base font-bold text-[#174330] shadow-sm transition hover:bg-[#eef6e9]"
+                href="/experiences"
+              >
+                비슷한 사례 찾기
+              </Link>
             </div>
 
-            <div className="mt-7 grid gap-3 sm:grid-cols-3">
-              <Link className="rounded-lg border border-[#174330] bg-[#174330] px-5 py-3.5 text-center text-base font-bold text-white shadow-sm" href="#disease-search">
-                질병정보 보기
-              </Link>
-              <Link className="rounded-lg border border-[#bcd2b2] bg-white px-5 py-3.5 text-center text-base font-bold text-[#174330] shadow-sm" href="#food-resources">
-                식이요법 보기
-              </Link>
-              <Link className="rounded-lg border border-[#bcd2b2] bg-white px-5 py-3.5 text-center text-base font-bold text-[#174330] shadow-sm" href="/submit">
-                경험 공유하기
-              </Link>
-            </div>
+            <p className="mt-6 max-w-4xl rounded-lg border border-[#d9d1aa] bg-white/80 p-4 text-sm font-semibold leading-6 text-[#596344]">
+              본 서비스는 의료 진단이나 치료를 제공하지 않으며, 사용자의 건강기록과 참고정보 정리를 돕는 서비스입니다.
+            </p>
           </div>
 
-          <aside className="rounded-lg border border-[#c7d9bd] bg-white/90 p-6 shadow-[0_20px_70px_rgba(31,75,54,0.12)]">
-            <p className="text-sm font-bold text-[#2f6c48]">현재 등록된 건강정보</p>
-            <p className="mt-3 text-5xl font-extrabold text-[#174330]">{diseases.length}개</p>
-            <p className="mt-3 text-base leading-7 text-[#526257]">
-              당뇨, 고혈압, 위염, 역류성 식도염, 관절염, 불면증 등 자주 찾는 주제를 먼저 구성했습니다.
-            </p>
-            <div className="mt-7 rounded-lg bg-[#eef6e9] p-5">
-              <p className="text-sm font-bold text-[#2f6c48]">최근 개인 경험담</p>
-              <h2 className="mt-2 text-xl font-bold leading-7 text-[#174330]">{experiences[0]?.title}</h2>
-              <p className="mt-3 text-base leading-7 text-[#526257]">{experiences[0]?.symptomDescription}</p>
+          <aside className="rounded-lg border border-[#c7d9bd] bg-white/92 p-6 shadow-[0_20px_70px_rgba(31,75,54,0.12)]">
+            <p className="text-sm font-extrabold text-[#2f6c48]">플랫폼 미리보기</p>
+            <h2 className="mt-3 text-2xl font-extrabold leading-8 text-[#173d2d]">
+              기록은 비공개로 시작하고, 공유는 익명 검토 후 진행합니다
+            </h2>
+            <div className="mt-6 grid gap-3">
+              {heroStats.map((stat) => (
+                <div key={stat.label} className="rounded-lg bg-[#f4faf0] p-4">
+                  <p className="text-xs font-extrabold text-[#2f6c48]">{stat.label}</p>
+                  <p className="mt-1 text-lg font-extrabold text-[#173d2d]">{stat.value}</p>
+                </div>
+              ))}
+            </div>
+            <div className="mt-6 rounded-lg bg-[#fff7f3] p-4">
+              <p className="text-sm font-extrabold text-[#9a3f25]">응급 안내</p>
+              <p className="mt-2 text-sm leading-6 text-[#714533]">
+                심한 통증, 호흡곤란, 의식 저하, 심한 출혈 등 응급 증상은 기록보다 119 또는 응급실 이용이 우선입니다.
+              </p>
             </div>
           </aside>
         </div>
       </section>
 
-      <section className="mx-auto max-w-[1440px] px-5 py-14 sm:px-8 lg:px-12">
-        <div className="mb-8">
-          <p className="text-sm font-bold text-[#2f6c48]">플랫폼 방향</p>
-          <h2 className="mt-2 text-3xl font-bold text-[#173d2d] sm:text-4xl">
-            단순 정보 목록이 아니라 검색 가능한 건강 경험 허브
-          </h2>
-        </div>
-        <div className="grid gap-5 md:grid-cols-3">
-          {platformFeatures.map((feature) => (
-            <article key={feature.title} className="rounded-lg border border-[#dde6d7] bg-white p-6 shadow-sm">
-              <h3 className="text-2xl font-bold text-[#1b4631]">{feature.title}</h3>
-              <p className="mt-4 text-base leading-8 text-[#526257]">{feature.description}</p>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <section className="mx-auto max-w-[1440px] px-5 pb-14 sm:px-8 lg:px-12">
-        <div className="mb-8">
-          <p className="text-sm font-bold text-[#2f6c48]">생활관리 자료 확장</p>
-          <h2 className="mt-2 text-3xl font-bold text-[#173d2d] sm:text-4xl">
-            운동요법과 식이요법까지 함께 확인하세요
-          </h2>
-          <p className="mt-4 max-w-3xl text-lg leading-8 text-[#526257]">
-            아래 자료는 진단이나 치료가 아니라 검색어와 등록된 건강정보를 바탕으로 정리한 생활관리 참고자료입니다.
-          </p>
-        </div>
-        <div className="grid gap-5 md:grid-cols-3">
-          {careSummaryCards.map((card) => (
-            <article key={card.title} className="rounded-lg border border-[#dde6d7] bg-white p-6 shadow-sm">
-              <h3 className="text-2xl font-bold text-[#1b4631]">{card.title}</h3>
-              <p className="mt-4 text-base leading-8 text-[#526257]">{card.description}</p>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <MainDiseaseSearch diseases={diseases} symptoms={symptoms} />
-
-      <section id="video-resources" className="mx-auto max-w-[1440px] scroll-mt-28 px-5 py-14 sm:px-8 lg:px-12">
-        <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <p className="text-sm font-bold text-[#2f6c48]">추천 영상자료</p>
-            <h2 className="mt-2 text-3xl font-bold text-[#173d2d] sm:text-4xl">건강관리 영상자료</h2>
-            <p className="mt-3 max-w-3xl text-lg leading-8 text-[#526257]">
-              영상자료는 참고용이며 의학적 진단이나 치료를 대신하지 않습니다.
-            </p>
-          </div>
-          <Link href="/videos" className="w-fit rounded-lg border border-[#bcd2b2] bg-white px-4 py-2.5 text-sm font-bold text-[#2f6c48] shadow-sm hover:text-[#174330]">
-            영상자료 더 보기
-          </Link>
-        </div>
-        <VideoCards videos={featuredVideos} />
-      </section>
-
-      <section id="food-resources" className="mx-auto max-w-[1440px] scroll-mt-28 px-5 py-14 sm:px-8 lg:px-12">
-        <div className="mb-6">
-          <p className="text-sm font-bold text-[#2f6c48]">식이요법과 참고 웹자료</p>
-          <h2 className="mt-2 text-3xl font-bold text-[#173d2d] sm:text-4xl">
-            출처와 요약 중심의 외부 자료
-          </h2>
-          <p className="mt-3 max-w-3xl text-lg leading-8 text-[#526257]">
-            외부 글 전체를 복사하지 않고 제목, 출처, 짧은 요약, 링크 중심으로 정리합니다.
-          </p>
-        </div>
-        <ArticleCards articles={featuredArticles} />
-      </section>
-
-      <section id="experience-preview" className="mx-auto max-w-[1440px] scroll-mt-28 px-5 py-14 sm:px-8 lg:px-12">
-        <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <p className="text-sm font-bold text-[#2f6c48]">최근 경험담</p>
-            <h2 className="mt-2 text-3xl font-bold text-[#173d2d] sm:text-4xl">개인 경험담 3개</h2>
-            <p className="mt-3 max-w-3xl text-lg leading-8 text-[#526257]">
-              개인 경험담은 의료정보와 구분되는 참고자료이며 진단이나 치료를 대신하지 않습니다.
-            </p>
-          </div>
-          <Link href="/experiences" className="w-fit rounded-lg border border-[#174330] bg-white px-4 py-2.5 text-sm font-bold text-[#174330] shadow-sm hover:bg-[#eef6e9]">
-            경험담 더 보기
-          </Link>
-        </div>
-        <div className="grid gap-5 md:grid-cols-3">
-          {recentExperiences.map((experience) => (
-            <article key={experience.id} id={experience.id} className="rounded-lg border border-[#dde6d7] bg-white p-6 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
-              <span className="rounded-full bg-[#f5f0e4] px-3 py-1.5 text-xs font-bold text-[#596344]">
-                개인 경험담
-              </span>
-              <p className="mt-5 text-sm font-bold text-[#2f6c48]">
-                {experience.diseaseOrSymptom} · {experience.nickname}
-              </p>
-              <h3 className="mt-2 text-xl font-bold leading-7 text-[#1b4631]">{experience.title}</h3>
-              <p className="mt-3 text-base leading-7 text-[#526257]">{experience.symptomDescription}</p>
-              <Link
-                href={`/experiences/${experience.slug}`}
-                className="mt-5 inline-flex rounded-lg border border-[#174330] px-4 py-2.5 text-sm font-bold text-[#174330] transition hover:bg-[#eef6e9]"
-              >
-                경험담 읽기
-              </Link>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <section id="health-guides" className="mx-auto max-w-[1440px] scroll-mt-28 px-5 py-14 sm:px-8 lg:px-12">
-        <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <p className="text-sm font-bold text-[#2f6c48]">건강관리 가이드</p>
-            <h2 className="mt-2 text-3xl font-bold text-[#173d2d] sm:text-4xl">증상별 건강관리 가이드</h2>
-            <p className="mt-3 max-w-3xl text-lg leading-8 text-[#526257]">
-              생활관리, 식이요법, 활동 참고, 병원 방문 전 체크리스트를 한 번에 정리한 참고자료입니다.
-            </p>
-          </div>
-          <Link href="/guides" className="w-fit rounded-lg border border-[#174330] bg-white px-4 py-2.5 text-sm font-bold text-[#174330] shadow-sm hover:bg-[#eef6e9]">
-            가이드 더 보기
-          </Link>
-        </div>
-        <div className="grid gap-5 md:grid-cols-3">
-          {guides.map((guide) => (
-            <Link
-              key={guide.id}
-              href={`/guides/${guide.slug}`}
-              className="rounded-lg border border-[#dde6d7] bg-white p-6 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
-            >
-              <span className="rounded-full bg-[#eef6e9] px-3 py-1.5 text-xs font-bold text-[#2f6c48]">
-                {guide.category}
-              </span>
-              <h3 className="mt-5 text-xl font-bold leading-7 text-[#1b4631]">{guide.title}</h3>
-              <p className="mt-3 text-base leading-7 text-[#526257]">{guide.summary}</p>
-              <p className="mt-5 text-sm font-bold text-[#174330]">자세히 보기</p>
-            </Link>
-          ))}
-        </div>
-      </section>
-
-      <DiseaseCategoryExplorer />
-      <MedicalDisclaimer />
+      <HealthBlogSection />
+      <SymptomRecordSection />
+      <PrescriptionMedicationSection />
+      <ExperienceShareSection />
+      <ReferenceResourceSection />
+      <HospitalSearchSection />
+      <MonthlyReportSection />
+      <PwaSection />
+      <FinalMedicalNotice />
     </main>
   );
 }
