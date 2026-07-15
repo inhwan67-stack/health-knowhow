@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
-    "test:rpc:local": "node scripts/run-local-rpc-safety-tests.mjs"
+    "test:rpc:local": "node scripts/run-local-rpc-safety-tests.mjs",
+    "dry-run:naver:datalab": "set NAVER_DATALAB_LIVE_DRY_RUN=1&& vitest run services/naverDatalabLiveDryRun.test.ts --reporter=verbose"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.108.1",
