@@ -32,7 +32,7 @@ function getRateLimiter(): Ratelimit | null {
             redis,
             limiter: Ratelimit.fixedWindow(
                 MAX_REQUESTS_PER_WINDOW,
-                "60 s",
+                "10 s",
             ),
             prefix: "ratelimit:ai-health-question",
         });
