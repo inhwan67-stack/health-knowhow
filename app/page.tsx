@@ -10,6 +10,7 @@ import {
   ReferenceResourceSection,
 } from "./components/HomePlatformSections";
 import SymptomRecordSection from "./components/SymptomRecordSection";
+import AiHealthQuestionSection from "./components/AiHealthQuestionSection";
 
 export const dynamic = "force-dynamic";
 
@@ -83,6 +84,8 @@ export default function Home() {
           </aside>
         </div>
       </section>
+
+      <AiHealthQuestionSection />
 
       <HealthBlogSection />
       <SymptomRecordSection />
