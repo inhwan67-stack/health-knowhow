@@ -1,5 +1,7 @@
+import { Ratelimit } from "@upstash/ratelimit";
+import { Redis } from "@upstash/redis";
+
 const MAX_QUESTION_LENGTH = 1000;
-const RATE_LIMIT_WINDOW_MS = 60_000;
 const MAX_REQUESTS_PER_WINDOW = 5;
 
 type RequestBody = {
@@ -10,20 +12,34 @@ type N8nResponse = {
     answer?: unknown;
 };
 
-type RateLimitRecord = {
-    count: number;
-    resetAt: number;
-};
+let rateLimiter: Ratelimit | null = null;
 
-const globalForRateLimit = globalThis as typeof globalThis & {
-    aiHealthQuestionRateLimit?: Map<string, RateLimitRecord>;
-};
+function getRateLimiter(): Ratelimit | null {
+    const url = process.env.KV_REST_API_URL;
+    const token = process.env.KV_REST_API_TOKEN;
 
-const rateLimitStore =
-    globalForRateLimit.aiHealthQuestionRateLimit ??
-    new Map<string, RateLimitRecord>();
+    if (!url || !token) {
+        return null;
+    }
 
-globalForRateLimit.aiHealthQuestionRateLimit = rateLimitStore;
+    if (!rateLimiter) {
+        const redis = new Redis({
+            url,
+            token,
+        });
+
+        rateLimiter = new Ratelimit({
+            redis,
+            limiter: Ratelimit.fixedWindow(
+                MAX_REQUESTS_PER_WINDOW,
+                "60 s",
+            ),
+            prefix: "ratelimit:ai-health-question",
+        });
+    }
+
+    return rateLimiter;
+}
 
 function getClientIp(request: Request): string {
     const forwardedFor = request.headers.get("x-forwarded-for");
@@ -35,68 +51,7 @@ function getClientIp(request: Request): string {
     return request.headers.get("x-real-ip")?.trim() || "unknown";
 }
 
-function checkRateLimit(clientIp: string) {
-    const now = Date.now();
-
-    if (rateLimitStore.size > 1000) {
-        for (const [ip, record] of rateLimitStore.entries()) {
-            if (record.resetAt <= now) {
-                rateLimitStore.delete(ip);
-            }
-        }
-    }
-
-    const currentRecord = rateLimitStore.get(clientIp);
-
-    if (!currentRecord || currentRecord.resetAt <= now) {
-        rateLimitStore.set(clientIp, {
-            count: 1,
-            resetAt: now + RATE_LIMIT_WINDOW_MS,
-        });
-
-        return {
-            allowed: true,
-            retryAfterSeconds: 0,
-        };
-    }
-
-    if (currentRecord.count >= MAX_REQUESTS_PER_WINDOW) {
-        return {
-            allowed: false,
-            retryAfterSeconds: Math.max(
-                1,
-                Math.ceil((currentRecord.resetAt - now) / 1000),
-            ),
-        };
-    }
-
-    currentRecord.count += 1;
-    rateLimitStore.set(clientIp, currentRecord);
-
-    return {
-        allowed: true,
-        retryAfterSeconds: 0,
-    };
-}
-
 export async function POST(request: Request) {
-    const clientIp = getClientIp(request);
-    const rateLimit = checkRateLimit(clientIp);
-
-    if (!rateLimit.allowed) {
-        return Response.json(
-            {
-                error: "질문 요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.",
-            },
-            {
-                status: 429,
-                headers: {
-                    "Retry-After": String(rateLimit.retryAfterSeconds),
-                },
-            },
-        );
-    }
-
     let body: RequestBody;
 
     try {
@@ -122,6 +77,47 @@ export async function POST(request: Request) {
         return Response.json(
             { error: "질문은 1,000자 이하로 입력해 주세요." },
             { status: 400 },
+        );
+    }
+
+    const limiter = getRateLimiter();
+
+    if (!limiter) {
+        return Response.json(
+            { error: "사용량 제한 서비스 설정이 완료되지 않았습니다." },
+            { status: 500 },
+        );
+    }
+
+    try {
+        const clientIp = getClientIp(request);
+        const result = await limiter.limit(`ip:${clientIp}`);
+
+        if (!result.success) {
+            const retryAfterSeconds = Math.max(
+                1,
+                Math.ceil((result.reset - Date.now()) / 1000),
+            );
+
+            return Response.json(
+                {
+                    error: "질문 요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.",
+                },
+                {
+                    status: 429,
+                    headers: {
+                        "Retry-After": String(retryAfterSeconds),
+                        "Cache-Control": "no-store",
+                    },
+                },
+            );
+        }
+    } catch {
+        return Response.json(
+            {
+                error: "사용량 제한 서비스를 확인할 수 없습니다. 잠시 후 다시 시도해 주세요.",
+            },
+            { status: 503 },
         );
     }
 
