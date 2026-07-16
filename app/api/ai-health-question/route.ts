@@ -1,4 +1,6 @@
 const MAX_QUESTION_LENGTH = 1000;
+const RATE_LIMIT_WINDOW_MS = 60_000;
+const MAX_REQUESTS_PER_WINDOW = 5;
 
 type RequestBody = {
     question?: unknown;
@@ -8,7 +10,93 @@ type N8nResponse = {
     answer?: unknown;
 };
 
+type RateLimitRecord = {
+    count: number;
+    resetAt: number;
+};
+
+const globalForRateLimit = globalThis as typeof globalThis & {
+    aiHealthQuestionRateLimit?: Map<string, RateLimitRecord>;
+};
+
+const rateLimitStore =
+    globalForRateLimit.aiHealthQuestionRateLimit ??
+    new Map<string, RateLimitRecord>();
+
+globalForRateLimit.aiHealthQuestionRateLimit = rateLimitStore;
+
+function getClientIp(request: Request): string {
+    const forwardedFor = request.headers.get("x-forwarded-for");
+
+    if (forwardedFor) {
+        return forwardedFor.split(",")[0]?.trim() || "unknown";
+    }
+
+    return request.headers.get("x-real-ip")?.trim() || "unknown";
+}
+
+function checkRateLimit(clientIp: string) {
+    const now = Date.now();
+
+    if (rateLimitStore.size > 1000) {
+        for (const [ip, record] of rateLimitStore.entries()) {
+            if (record.resetAt <= now) {
+                rateLimitStore.delete(ip);
+            }
+        }
+    }
+
+    const currentRecord = rateLimitStore.get(clientIp);
+
+    if (!currentRecord || currentRecord.resetAt <= now) {
+        rateLimitStore.set(clientIp, {
+            count: 1,
+            resetAt: now + RATE_LIMIT_WINDOW_MS,
+        });
+
+        return {
+            allowed: true,
+            retryAfterSeconds: 0,
+        };
+    }
+
+    if (currentRecord.count >= MAX_REQUESTS_PER_WINDOW) {
+        return {
+            allowed: false,
+            retryAfterSeconds: Math.max(
+                1,
+                Math.ceil((currentRecord.resetAt - now) / 1000),
+            ),
+        };
+    }
+
+    currentRecord.count += 1;
+    rateLimitStore.set(clientIp, currentRecord);
+
+    return {
+        allowed: true,
+        retryAfterSeconds: 0,
+    };
+}
+
 export async function POST(request: Request) {
+    const clientIp = getClientIp(request);
+    const rateLimit = checkRateLimit(clientIp);
+
+    if (!rateLimit.allowed) {
+        return Response.json(
+            {
+                error: "질문 요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.",
+            },
+            {
+                status: 429,
+                headers: {
+                    "Retry-After": String(rateLimit.retryAfterSeconds),
+                },
+            },
+        );
+    }
+
     let body: RequestBody;
 
     try {
@@ -75,7 +163,9 @@ export async function POST(request: Request) {
         return Response.json({ answer: data.answer });
     } catch {
         return Response.json(
-            { error: "AI 서비스에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요." },
+            {
+                error: "AI 서비스에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.",
+            },
             { status: 502 },
         );
     }
