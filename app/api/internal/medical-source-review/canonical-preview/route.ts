@@ -10,6 +10,11 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+const JSON_RESPONSE_HEADERS = {
+  "Content-Type": "application/json; charset=utf-8",
+  "Cache-Control": "no-store",
+};
+
 type FailureBody = {
   success: false;
   dryRun: true;
@@ -61,7 +66,7 @@ export async function POST(request: Request) {
       persistable: false,
       sideEffects: canonicalPreviewSideEffects(),
     },
-    { headers: { "Cache-Control": "no-store" } },
+    { headers: JSON_RESPONSE_HEADERS },
   );
 }
 
@@ -81,5 +86,5 @@ function jsonFailure(
     ...(validationErrors ? { validationErrors } : {}),
     sideEffects: canonicalPreviewSideEffects(),
   };
-  return Response.json(body, { status, headers: { "Cache-Control": "no-store" } });
+  return Response.json(body, { status, headers: JSON_RESPONSE_HEADERS });
 }

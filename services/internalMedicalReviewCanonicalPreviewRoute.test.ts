@@ -15,6 +15,8 @@ describe("internal medical review canonical preview route", () => {
 
     expect(response.status).toBe(401);
     expect(response.headers.get("Cache-Control")).toBe("no-store");
+    expect(response.headers.get("Content-Type")).toContain("application/json");
+    expect(response.headers.get("Content-Type")).toContain("charset=utf-8");
     expect(body).toMatchObject({
       success: false,
       errorCode: "UNAUTHORIZED",
@@ -34,8 +36,10 @@ describe("internal medical review canonical preview route", () => {
     }));
 
     expect(dryRunFalse.status).toBe(400);
+    expect(dryRunFalse.headers.get("Content-Type")).toContain("charset=utf-8");
     expect(await dryRunFalse.json()).toMatchObject({ success: false, errorCode: "VALIDATION_ERROR", sideEffects: noSideEffects() });
     expect(malformed.status).toBe(400);
+    expect(malformed.headers.get("Content-Type")).toContain("charset=utf-8");
     expect(await malformed.json()).toMatchObject({ success: false, errorCode: "VALIDATION_ERROR", sideEffects: noSideEffects() });
   });
 
@@ -47,6 +51,7 @@ describe("internal medical review canonical preview route", () => {
     }));
 
     expect(response.status).toBe(413);
+    expect(response.headers.get("Content-Type")).toContain("charset=utf-8");
     expect(await response.json()).toMatchObject({ success: false, errorCode: "PAYLOAD_TOO_LARGE", sideEffects: noSideEffects() });
   });
 
@@ -57,6 +62,8 @@ describe("internal medical review canonical preview route", () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get("Cache-Control")).toBe("no-store");
+    expect(response.headers.get("Content-Type")).toContain("application/json");
+    expect(response.headers.get("Content-Type")).toContain("charset=utf-8");
     expect(body).toMatchObject({
       success: true,
       dryRun: true,
