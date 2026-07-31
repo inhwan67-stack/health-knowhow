@@ -30,6 +30,8 @@ export type ValidatedProviderRegistry = ProviderRegistry & {
   readonly [validatedProviderRegistryBrand]: true;
 };
 
+declare const validatedProviderSelectionBrand: unique symbol;
+
 export type ProviderApprovalProfile = {
   providerId: RegisteredProviderId;
   approvedCapabilities: readonly ProviderCapability[];
@@ -51,6 +53,7 @@ const providerApprovalProfileById = new Map<RegisteredProviderId, ProviderApprov
 );
 
 const validatedRegistryObjects = new WeakSet<ProviderRegistry>();
+const validatedSelectionObjects = new WeakSet<ProviderSelectionSuccess>();
 
 export type ProviderAdapterExecuteRequest = {
   requestId: string;
@@ -112,21 +115,27 @@ export type ProviderRegistryBuildResult =
       unsafeProviderIdsExposed: false;
     };
 
+export type ProviderSelectionSuccess = {
+  selected: true;
+  capability: ProviderCapability | null;
+  selectedProviderId: RegisteredProviderId;
+  selectedTrustTier: ProviderTrustTier;
+  candidateProviderIds: readonly RegisteredProviderId[];
+  failClosed: false;
+  persistable: false;
+  publishable: false;
+  executionStarted: false;
+  jobShouldPause: false;
+  manualReviewRequired: false;
+  reasonCode: "PROVIDER_SELECTED_FOR_PREVIEW";
+};
+
+export type ValidatedProviderSelection = ProviderSelectionSuccess & {
+  readonly [validatedProviderSelectionBrand]: true;
+};
+
 export type ProviderSelectionResult =
-  | {
-      selected: true;
-      capability: ProviderCapability | null;
-      selectedProviderId: RegisteredProviderId;
-      selectedTrustTier: ProviderTrustTier;
-      candidateProviderIds: RegisteredProviderId[];
-      failClosed: false;
-      persistable: false;
-      publishable: false;
-      executionStarted: false;
-      jobShouldPause: false;
-      manualReviewRequired: false;
-      reasonCode: "PROVIDER_SELECTED_FOR_PREVIEW";
-    }
+  | ValidatedProviderSelection
   | {
       selected: false;
       capability: ProviderCapability | null;
@@ -207,12 +216,12 @@ export function selectProviderForCapability(
 
   if (candidateProviders.length > 0) {
     const selectedProvider = candidateProviders[0];
-    return {
+    const selection = Object.freeze({
       selected: true,
       capability,
       selectedProviderId: selectedProvider.providerId,
       selectedTrustTier: selectedProvider.trustTier,
-      candidateProviderIds: candidateProviders.map((provider) => provider.providerId),
+      candidateProviderIds: Object.freeze(candidateProviders.map((provider) => provider.providerId)),
       failClosed: false,
       persistable: false,
       publishable: false,
@@ -220,7 +229,9 @@ export function selectProviderForCapability(
       jobShouldPause: false,
       manualReviewRequired: false,
       reasonCode: "PROVIDER_SELECTED_FOR_PREVIEW",
-    };
+    }) as ValidatedProviderSelection;
+    validatedSelectionObjects.add(selection);
+    return selection;
   }
 
   const enabledCapabilityProviders = providers
@@ -261,6 +272,36 @@ export function buildProviderRegistryConfigurationErrorSelection(capability: unk
     manualReviewRequired: isMedicalSafetyCapability(capability),
     reasonCode: "PROVIDER_REGISTRY_CONFIGURATION_ERROR",
   };
+}
+
+export function isValidatedProviderSelection(value: unknown): value is ValidatedProviderSelection {
+  return validateProviderSelectionForExecution(value);
+}
+
+export function validateProviderSelectionForExecution(
+  value: unknown,
+  capability?: ProviderCapability,
+  providerId?: RegisteredProviderId,
+): value is ValidatedProviderSelection {
+  if (!isProviderSelectionSuccessLike(value)) return false;
+  if (!validatedSelectionObjects.has(value)) return false;
+  if (!Object.isFrozen(value) || !Object.isFrozen(value.candidateProviderIds)) return false;
+  if (value.selected !== true) return false;
+  if (value.reasonCode !== "PROVIDER_SELECTED_FOR_PREVIEW") return false;
+  if (value.failClosed !== false) return false;
+  if (value.jobShouldPause !== false) return false;
+  if (value.manualReviewRequired !== false) return false;
+  if (value.persistable !== false) return false;
+  if (value.publishable !== false) return false;
+  if (value.executionStarted !== false) return false;
+  if (!isProviderCapability(value.capability)) return false;
+  if (!isSafeRegisteredProviderId(value.selectedProviderId)) return false;
+  if (!isProviderTrustTier(value.selectedTrustTier)) return false;
+  if (!Array.isArray(value.candidateProviderIds)) return false;
+  if (!value.candidateProviderIds.includes(value.selectedProviderId)) return false;
+  if (capability !== undefined && value.capability !== capability) return false;
+  if (providerId !== undefined && value.selectedProviderId !== providerId) return false;
+  return providerProfileAllowsCapability(value.selectedProviderId, value.selectedTrustTier, value.capability);
 }
 
 function buildProviderRequestValidationErrorSelection(): ProviderSelectionResult {
@@ -305,6 +346,10 @@ export function isProviderTrustTier(value: unknown): value is ProviderTrustTier 
 }
 
 function isProviderAdapterLike(value: unknown): value is ProviderAdapterContract {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isProviderSelectionSuccessLike(value: unknown): value is ProviderSelectionSuccess {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 

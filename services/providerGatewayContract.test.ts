@@ -6,11 +6,14 @@ import {
   buildProviderRegistryConfigurationErrorSelection,
   isProviderCapability,
   isProviderTrustTier,
+  isValidatedProviderSelection,
   providerTrustTiers,
   selectProviderForCapability,
+  validateProviderSelectionForExecution,
   type ProviderAdapterContract,
   type ProviderAdapterExecuteRequest,
   type ProviderAdapterExecuteResult,
+  type ProviderSelectionResult,
   type ValidatedProviderRegistry,
 } from "./providerGatewayContract";
 import { providerCapabilities } from "./providerResiliencePolicy";
@@ -59,6 +62,63 @@ describe("provider gateway contract", () => {
       publishable: false,
       executionStarted: false,
     });
+  });
+
+  it("marks only actual router success selections as validated provider selections", () => {
+    const registry = buildOrThrow([adapter()]);
+    const result = selectProviderForCapability(registry, "medical_source_fetch");
+    expect(result.selected).toBe(true);
+    expect(isValidatedProviderSelection(result)).toBe(true);
+    expect(validateProviderSelectionForExecution(result, "medical_source_fetch", "cdc-safe-fetch")).toBe(true);
+    expect(Object.isFrozen(result)).toBe(true);
+    if (result.selected) expect(Object.isFrozen(result.candidateProviderIds)).toBe(true);
+  });
+
+  it("rejects forged or cloned selected=true objects as execution selections", () => {
+    const registry = buildOrThrow([adapter()]);
+    const result = selectProviderForCapability(registry, "medical_source_fetch");
+    expect(result.selected).toBe(true);
+    const clone = { ...result, candidateProviderIds: [...result.candidateProviderIds] };
+    const forged: ProviderSelectionResult = {
+      selected: true,
+      capability: "medical_source_fetch",
+      selectedProviderId: "cdc-safe-fetch",
+      selectedTrustTier: "medical_authoritative",
+      candidateProviderIds: ["cdc-safe-fetch"],
+      failClosed: false,
+      persistable: false,
+      publishable: false,
+      executionStarted: false,
+      jobShouldPause: false,
+      manualReviewRequired: false,
+      reasonCode: "PROVIDER_SELECTED_FOR_PREVIEW",
+    } as unknown as ProviderSelectionResult;
+    expect(isValidatedProviderSelection(clone)).toBe(false);
+    expect(isValidatedProviderSelection(forged)).toBe(false);
+    expect(validateProviderSelectionForExecution(null, "medical_source_fetch", "cdc-safe-fetch")).toBe(false);
+    expect(validateProviderSelectionForExecution("selected", "medical_source_fetch", "cdc-safe-fetch")).toBe(false);
+    expect(validateProviderSelectionForExecution(["selected"], "medical_source_fetch", "cdc-safe-fetch")).toBe(false);
+  });
+
+  it("prevents selected result mutation from changing execution validation", () => {
+    const registry = buildOrThrow([adapter()]);
+    const result = selectProviderForCapability(registry, "medical_source_fetch");
+    expect(result.selected).toBe(true);
+    expect(() => {
+      (result as { selectedTrustTier: string }).selectedTrustTier = "trusted_service";
+    }).toThrow();
+    expect(() => {
+      (result.candidateProviderIds as string[]).push("naver-datalab");
+    }).toThrow();
+    expect(validateProviderSelectionForExecution(result, "medical_source_fetch", "cdc-safe-fetch")).toBe(true);
+  });
+
+  it("rejects validated selections when requested capability or provider does not match", () => {
+    const registry = buildOrThrow([adapter()]);
+    const result = selectProviderForCapability(registry, "medical_source_fetch");
+    expect(result.selected).toBe(true);
+    expect(validateProviderSelectionForExecution(result, "ai_medical_review", "cdc-safe-fetch")).toBe(false);
+    expect(validateProviderSelectionForExecution(result, "medical_source_fetch", "internal-source-fetch-preview")).toBe(false);
   });
 
   it("does not infer approval for medical source search providers", () => {
