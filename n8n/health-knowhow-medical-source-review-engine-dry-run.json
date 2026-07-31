@@ -1,0 +1,591 @@
+{
+  "name": "Health Knowhow - Medical Source Review - REVIEW ENGINE DRY RUN",
+  "active": false,
+  "versionId": "medical-source-review-engine-dry-run-v2-safe-source-preview",
+  "nodes": [
+    {
+      "id": "manual-trigger",
+      "name": "Manual Trigger Only",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {},
+      "notes": "Manual execution only. No webhook, no schedule, no production workflow connection. This workflow performs read-only draft GET and one safe source fetch preview API POST only."
+    },
+    {
+      "id": "controlled-dry-run-input",
+      "name": "Controlled Dry-Run Input",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        0
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "dry-run",
+              "name": "dryRun",
+              "type": "boolean",
+              "value": true
+            },
+            {
+              "id": "content-id",
+              "name": "contentId",
+              "type": "string",
+              "value": "819852773404"
+            },
+            {
+              "id": "revision-id",
+              "name": "revisionId",
+              "type": "string",
+              "value": "13"
+            },
+            {
+              "id": "locale",
+              "name": "locale",
+              "type": "string",
+              "value": "ko-KR"
+            },
+            {
+              "id": "country",
+              "name": "country",
+              "type": "string",
+              "value": "KR"
+            },
+            {
+              "id": "input-mode",
+              "name": "inputMode",
+              "type": "string",
+              "value": "revision-13-review-engine-dry-run"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "notes": "Controlled first review-engine dry-run input for revision 13. To review another revision, explicitly edit this node. Do not store tokens or secrets here."
+    },
+    {
+      "id": "input-normalize",
+      "name": "Input Normalize",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const input = $json.body ?? $json;\nconst requestedContentId = String(input.contentId ?? '').trim();\nconst requestedRevisionId = String(input.revisionId ?? '').trim();\nconst errors = [];\nif (input.dryRun !== true) errors.push('dryRun=true is required.');\nif (!requestedContentId) errors.push('contentId is required.');\nif (!requestedRevisionId) errors.push('revisionId is required.');\nreturn [{ json: {\n  dryRun: input.dryRun === true,\n  requestedContentId,\n  requestedRevisionId,\n  locale: input.locale ?? 'ko-KR',\n  country: input.country ?? 'KR',\n  inputMode: input.inputMode ?? 'revision-13-review-engine-dry-run',\n  inputValid: errors.length === 0,\n  validationErrors: errors,\n  persisted: false,\n  persistable: false,\n  persistableCandidate: false,\n  sideEffects: {\n    internalDraftGetCalled: false,\n    sourceFetchExecuted: false,\n    externalSourceGetsCalled: false,\n    reviewResultInserted: false,\n    contentRevisionUpdated: false,\n    imagePlanUpdated: false,\n    workflowCompleted: false,\n    notificationSent: false,\n    publicationCreated: false,\n    publishQueueCreated: false,\n    finalApprovalCreated: false,\n    publishedContentsCreated: false,\n    storageUploaded: false,\n    imageGenerated: false\n  }\n} }];"
+      }
+    },
+    {
+      "id": "input-valid-check",
+      "name": "Input Valid Check",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        660,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{$json.inputValid}}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "notes": "False branch terminates immediately. Draft GET is only connected from the true branch."
+    },
+    {
+      "id": "invalid-input-output",
+      "name": "Invalid Input Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        180
+      ],
+      "parameters": {
+        "jsCode": "return [{ json: {\n  success: false,\n  dryRun: $json.dryRun,\n  stage: 'invalid-controlled-input',\n  message: 'Invalid controlled review-engine dry-run input.',\n  validationErrors: $json.validationErrors,\n  persisted: false,\n  persistable: false,\n  persistableCandidate: false,\n  reviewEngineExecuted: false,\n  sourceFetchExecuted: false,\n  sourceVerificationExecuted: false,\n  deterministicMatchingPreviewExecuted: false,\n  claimSourceMatchingExecuted: false,\n  claimCandidates: [],\n  claimMatchPreviews: [],\n  sourceCandidates: [],\n  sourceFetchPreviews: [],\n  requiredChanges: [],\n  approvedClaimIds: [],\n  verificationClaimIds: [],\n  unsupportedClaimIds: [],\n  reviewSummary: null,\n  canonicalMaterialPreview: null,\n  payloadFingerprintPreview: null,\n  sideEffects: $json.sideEffects\n} }];"
+      }
+    },
+    {
+      "id": "draft-fetch",
+      "name": "Read Internal Draft",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        880,
+        -120
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "{{ 'https://health-knowhow.vercel.app/api/internal/content-drafts/' + $json.requestedRevisionId }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 30000,
+          "ignoreResponseCode": true
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "Health Knowhow Internal Draft Header Auth"
+        }
+      },
+      "notes": "Read-only internal draft GET. Configure Header Auth credential in n8n credential storage only: header name Authorization, header value from INTERNAL_CONTENT_DRAFTS_TOKEN, domain health-knowhow.vercel.app. Token value must never be stored in workflow JSON."
+    },
+    {
+      "id": "draft-contract-verify",
+      "name": "Draft Contract Verify",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        -120
+      ],
+      "parameters": {
+        "jsCode": "const draft = $json;\nconst requestedContentId = String($node['Input Normalize'].json.requestedContentId ?? '');\nconst requestedRevisionId = String($node['Input Normalize'].json.requestedRevisionId ?? '');\nconst errors = [];\nif (draft.success !== true) errors.push('Draft GET did not return success=true.');\nif (String(draft.contentId ?? '') !== requestedContentId) errors.push('Response contentId does not match requested contentId.');\nif (String(draft.revisionId ?? '') !== requestedRevisionId) errors.push('Response revisionId does not match requested revisionId.');\nif (draft.revisionStatus !== 'draft') errors.push('Review-engine dry-run currently allows revisionStatus=draft only.');\nif (!Array.isArray(draft.sources)) errors.push('Draft sources must be an array.');\nconst sourceIds = Array.isArray(draft.sources) ? draft.sources.map((source) => String(source.sourceId ?? '').trim()) : [];\nconst uniqueSourceIds = new Set(sourceIds.filter(Boolean));\nif (sourceIds.length < 1 || sourceIds.length > 3) errors.push('Draft must contain 1 to 3 sources for safe preview.');\nif (sourceIds.some((sourceId) => !sourceId)) errors.push('All draft sources must have string sourceId values.');\nif (uniqueSourceIds.size !== sourceIds.length) errors.push('Draft sourceIds must be unique.');\nreturn [{ json: {\n  ...draft,\n  requestedContentId,\n  requestedRevisionId,\n  locale: $node['Input Normalize'].json.locale,\n  country: $node['Input Normalize'].json.country,\n  inputMode: $node['Input Normalize'].json.inputMode,\n  contractValid: errors.length === 0,\n  contractErrors: errors,\n  dryRun: true,\n  persisted: false,\n  persistable: false,\n  persistableCandidate: false,\n  sourceIds,\n  sideEffects: { ...($node['Input Normalize'].json.sideEffects ?? {}), internalDraftGetCalled: true }\n} }];"
+      }
+    },
+    {
+      "id": "draft-contract-check",
+      "name": "Draft Contract Check",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        -120
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{$json.contractValid}}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "notes": "False branch stops before claim extraction and safe source preview POST."
+    },
+    {
+      "id": "contract-block-output",
+      "name": "Contract Block Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1540,
+        80
+      ],
+      "parameters": {
+        "jsCode": "return [{ json: {\n  success: false,\n  dryRun: true,\n  stage: 'draft-contract-check',\n  message: 'Draft GET response did not match requested review-engine dry-run target.',\n  requestedContentId: $json.requestedContentId,\n  requestedRevisionId: $json.requestedRevisionId,\n  responseContentId: $json.contentId ?? null,\n  responseRevisionId: $json.revisionId ?? null,\n  inputRevisionStatus: $json.revisionStatus ?? null,\n  validationErrors: $json.contractErrors,\n  persisted: false,\n  persistable: false,\n  persistableCandidate: false,\n  reviewEngineExecuted: false,\n  sourceFetchExecuted: false,\n  sourceVerificationExecuted: false,\n  deterministicMatchingPreviewExecuted: false,\n  claimSourceMatchingExecuted: false,\n  claimCandidates: [],\n  claimMatchPreviews: [],\n  sourceCandidates: [],\n  sourceFetchPreviews: [],\n  requiredChanges: [],\n  approvedClaimIds: [],\n  verificationClaimIds: [],\n  unsupportedClaimIds: [],\n  reviewSummary: null,\n  canonicalMaterialPreview: null,\n  payloadFingerprintPreview: null,\n  sideEffects: $json.sideEffects\n} }];"
+      }
+    },
+    {
+      "id": "claim-extract",
+      "name": "Extract Claim Candidates",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1540,
+        -220
+      ],
+      "parameters": {
+        "jsCode": "function asText(value) { return typeof value === 'string' ? value : ''; }\nfunction collectStructuredText(value, output = []) {\n  if (!value) return output;\n  if (typeof value === 'string') { output.push(value); return output; }\n  if (Array.isArray(value)) { for (const item of value) collectStructuredText(item, output); return output; }\n  if (typeof value === 'object') { for (const item of Object.values(value)) collectStructuredText(item, output); }\n  return output;\n}\nfunction splitSentences(text) {\n  return String(text).replace(/[#>*_\\x60\\-]/g, ' ').split(/(?<=[.!?。！？]|[다요함됨음임])\\s+|\\n+/u).map((item) => item.replace(/\\s+/g, ' ').trim()).filter((item) => item.length >= 12);\n}\nfunction classifyClaim(text) {\n  if (/의료진|상담|병원|진료|코골이|호흡|불면|주간 졸림/.test(text)) return { claimType: 'doctor-visit', riskLevel: 'medium' };\n  if (/카페인|스마트폰|화면|취침|기상|침실|수면|숙면/.test(text)) return { claimType: 'lifestyle-advice', riskLevel: 'low' };\n  return { claimType: 'general-health', riskLevel: 'low' };\n}\nfunction looksLikeClaim(text) {\n  return /수면|숙면|불면|졸림|코골이|호흡|카페인|침실|취침|기상|스마트폰|화면|생활습관|의료진|상담|건강/.test(text) && /도움|필요|권장|줄|높|낮|영향|관리|확인|상담/.test(text);\n}\nconst textBlocks = [asText($json.title), asText($json.summary), asText($json.bodyMarkdown), ...collectStructuredText($json.structuredContent)].filter(Boolean);\nconst sourceIds = ($json.sources ?? []).map((source) => String(source.sourceId));\nconst seen = new Set();\nconst claimCandidates = [];\nfor (const block of textBlocks) {\n  for (const sentence of splitSentences(block)) {\n    if (!looksLikeClaim(sentence)) continue;\n    const normalizedClaim = sentence.replace(/\\s+/g, ' ').trim();\n    const dedupeKey = normalizedClaim.toLowerCase();\n    if (seen.has(dedupeKey)) continue;\n    seen.add(dedupeKey);\n    const classified = classifyClaim(normalizedClaim);\n    claimCandidates.push({\n      claimId: 'claim-' + String(claimCandidates.length + 1).padStart(3, '0'),\n      originalText: sentence,\n      normalizedClaim,\n      claimType: classified.claimType,\n      riskLevel: classified.riskLevel,\n      sourceRequired: true,\n      candidateSourceIds: sourceIds,\n      reviewStatus: 'candidate_only',\n      note: 'Extracted from actual draft text. This is not a medical approval or source-support decision.'\n    });\n  }\n}\nreturn [{ json: { ...$json, claimCandidates, bodyTextLength: textBlocks.join('\\n').length } }];"
+      },
+      "notes": "Extracts candidate claims from actual title, summary, bodyMarkdown, and structuredContent. It must not use hardcoded claim results."
+    },
+    {
+      "id": "build-safe-source-fetch-request",
+      "name": "Build Safe Source Fetch Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        -220
+      ],
+      "parameters": {
+        "jsCode": "const draftSourceIds = ($json.sources ?? []).map((source) => String(source.sourceId ?? '').trim());\nconst sourceIds = draftSourceIds.filter(Boolean);\nconst uniqueSourceIds = [...new Set(sourceIds)];\nconst errors = [];\nif (sourceIds.length === 0) errors.push('sourceIds must not be empty.');\nif (sourceIds.length > 3) errors.push('sourceIds must contain at most 3 items.');\nif (uniqueSourceIds.length !== sourceIds.length) errors.push('sourceIds must not contain duplicates.');\nif (errors.length) {\n  return [{ json: { ...$json, safeSourceRequestValid: false, safeSourceRequestErrors: errors, sourceIds } }];\n}\nreturn [{ json: {\n  ...$json,\n  safeSourceRequestValid: true,\n  safeSourceRequestErrors: [],\n  safeSourcePreviewRequest: {\n    dryRun: true,\n    contentId: String($json.contentId),\n    revisionId: String($json.revisionId),\n    sourceIds: uniqueSourceIds\n  },\n  sourceCandidates: ($json.sources ?? []).map((source) => ({\n    sourceId: String(source.sourceId),\n    title: source.title,\n    publisherName: source.publisherName,\n    requestedUrl: source.url,\n    sourceType: source.sourceType,\n    verificationStatus: 'verification_required',\n    trustLevel: source.trustLevel,\n    usageType: source.usageType,\n    relevanceNote: source.relevanceNote,\n    candidateOnly: true\n  }))\n} }];"
+      },
+      "notes": "Builds safe source preview API request from draft.sources sourceId values only. URL, hostname, method, claim text, source text, and tokens are never placed in the request body."
+    },
+    {
+      "id": "safe-source-request-check",
+      "name": "Safe Source Request Check",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1980,
+        -220
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{$json.safeSourceRequestValid}}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "notes": "False branch stops before safe source preview POST."
+    },
+    {
+      "id": "safe-source-request-block-output",
+      "name": "Safe Source Request Block Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2200,
+        40
+      ],
+      "parameters": {
+        "jsCode": "return [{ json: {\n  success: false,\n  dryRun: true,\n  stage: 'safe-source-request',\n  validationErrors: $json.safeSourceRequestErrors ?? [],\n  contentId: String($json.contentId ?? ''),\n  revisionId: String($json.revisionId ?? ''),\n  claimCandidates: $json.claimCandidates ?? [],\n  sourceCandidates: $json.sourceCandidates ?? [],\n  sourceFetchPreviews: [],\n  claimMatchPreviews: [],\n  requiredChanges: [],\n  approvedClaimIds: [],\n  verificationClaimIds: [],\n  unsupportedClaimIds: [],\n  reviewSummary: null,\n  reviewEngineExecuted: false,\n  sourceFetchExecuted: false,\n  sourceVerificationExecuted: false,\n  deterministicMatchingPreviewExecuted: false,\n  claimSourceMatchingExecuted: false,\n  persisted: false,\n  persistable: false,\n  persistableCandidate: false,\n  canonicalMaterialPreview: null,\n  payloadFingerprintPreview: null,\n  sideEffects: $json.sideEffects\n} }];"
+      }
+    },
+    {
+      "id": "safe-source-preview-fetch",
+      "name": "Fetch Sources via Safe Preview API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        2200,
+        -300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://health-knowhow.vercel.app/api/internal/medical-source-review/source-fetch-preview",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "contentType": "json",
+        "options": {
+          "timeout": 45000,
+          "ignoreResponseCode": true
+        },
+        "specifyBody": "form",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "dryRun",
+              "value": "{{ true }}"
+            },
+            {
+              "name": "contentId",
+              "value": "{{ $json.safeSourcePreviewRequest.contentId }}"
+            },
+            {
+              "name": "revisionId",
+              "value": "{{ $json.safeSourcePreviewRequest.revisionId }}"
+            },
+            {
+              "name": "sourceIds",
+              "value": "{{ $json.safeSourcePreviewRequest.sourceIds }}"
+            }
+          ]
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "Health Knowhow Source Fetch Preview Header Auth"
+        }
+      },
+      "notes": "Calls the server-side safe source fetch preview API exactly once. Configure separate Header Auth credential in n8n credential storage only: header name Authorization, header value from INTERNAL_SOURCE_FETCH_PREVIEW_TOKEN, domain health-knowhow.vercel.app. Token value must never be stored in workflow JSON.",
+      "continueOnFail": true
+    },
+    {
+      "id": "safe-source-preview-contract-verify",
+      "name": "Safe Source Preview Contract Verify",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2420,
+        -300
+      ],
+      "parameters": {
+        "jsCode": "const response = $json;\nconst request = $node['Build Safe Source Fetch Request'].json.safeSourcePreviewRequest ?? {};\nconst requestedIds = (request.sourceIds ?? []).map((sourceId) => String(sourceId));\nconst resultIds = Array.isArray(response.results) ? response.results.map((result) => String(result.sourceId)) : [];\nconst errors = [];\nconst forbiddenFields = ['fullHtml', 'rawHtml', 'extractedSourceText', 'fullSourceText'];\nif (response.success !== true) errors.push('safe preview API success must be true.');\nif (response.dryRun !== true) errors.push('safe preview API dryRun must be true.');\nif (response.persisted !== false) errors.push('safe preview API persisted must be false.');\nif (response.persistable !== false) errors.push('safe preview API persistable must be false.');\nif (String(response.contentId ?? '') !== String(request.contentId ?? '')) errors.push('safe preview contentId mismatch.');\nif (String(response.revisionId ?? '') !== String(request.revisionId ?? '')) errors.push('safe preview revisionId mismatch.');\nif (response.sourceFetchExecuted !== true) errors.push('sourceFetchExecuted must be true.');\nif (response.sourceVerificationExecuted !== false) errors.push('sourceVerificationExecuted must be false.');\nif (!Array.isArray(response.results)) errors.push('results must be an array.');\nif (new Set(resultIds).size !== resultIds.length) errors.push('result sourceIds must be unique.');\nif (requestedIds.length !== resultIds.length) errors.push('result count must match requested sourceIds.');\nfor (const requestedId of requestedIds) if (!resultIds.includes(requestedId)) errors.push(`missing result sourceId ${requestedId}`);\nfor (const resultId of resultIds) if (!requestedIds.includes(resultId)) errors.push(`unknown result sourceId ${resultId}`);\nfor (const result of response.results ?? []) {\n  if (typeof result.fetchSucceeded !== 'boolean') errors.push(`fetchSucceeded boolean missing for ${result.sourceId}`);\n  if (!result.verificationStatus) errors.push(`verificationStatus missing for ${result.sourceId}`);\n  if (result.fetchSucceeded === true && result.verificationStatus !== 'fetched_unverified') errors.push(`successful source ${result.sourceId} must be fetched_unverified only.`);\n  if (['approved', 'verified', 'final'].includes(String(result.verificationStatus))) errors.push(`source ${result.sourceId} returned final verification state.`);\n  for (const field of forbiddenFields) if (Object.prototype.hasOwnProperty.call(result, field)) errors.push(`forbidden full source field ${field} returned.`);\n}\nconst writeSideEffects = ['reviewResultInserted','contentRevisionUpdated','imagePlanUpdated','workflowCompleted','notificationSent','publicationCreated','publishQueueCreated','finalApprovalCreated','publishedContentsCreated','storageUploaded','imageGenerated'];\nfor (const field of writeSideEffects) if (response.sideEffects?.[field] !== false) errors.push(`write sideEffect ${field} must be false.`);\nif (response.sideEffects?.internalDraftGetCalled !== true) errors.push('internalDraftGetCalled must be true.');\nif (response.sideEffects?.externalSourceGetsCalled !== true) errors.push('externalSourceGetsCalled must be true because the safe API performed external GETs.');\nreturn [{ json: {\n  ...$node['Build Safe Source Fetch Request'].json,\n  safeSourcePreviewResponse: response,\n  safeSourcePreviewValid: errors.length === 0,\n  safeSourcePreviewErrors: errors,\n  sourceFetchPreviews: Array.isArray(response.results) ? response.results : [],\n  sideEffects: { ...($node['Build Safe Source Fetch Request'].json.sideEffects ?? {}), ...(response.sideEffects ?? {}) }\n} }];"
+      },
+      "notes": "Fails closed if safe preview API response is not read-only, not dry-run, exposes full source text fields, mismatches sourceIds, or reports any write side effect."
+    },
+    {
+      "id": "safe-source-preview-contract-check",
+      "name": "Safe Source Preview Contract Check",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2640,
+        -300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{$json.safeSourcePreviewValid}}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "notes": "False branch blocks the workflow before deterministic matching preview."
+    },
+    {
+      "id": "safe-source-preview-block-output",
+      "name": "Safe Source Preview Block Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2860,
+        0
+      ],
+      "parameters": {
+        "jsCode": "return [{ json: {\n  success: false,\n  dryRun: true,\n  stage: 'safe-source-preview-contract',\n  validationErrors: $json.safeSourcePreviewErrors ?? [],\n  contentId: String($json.contentId ?? ''),\n  revisionId: String($json.revisionId ?? ''),\n  claimCandidates: $json.claimCandidates ?? [],\n  sourceCandidates: $json.sourceCandidates ?? [],\n  sourceFetchPreviews: [],\n  claimMatchPreviews: [],\n  requiredChanges: [],\n  approvedClaimIds: [],\n  verificationClaimIds: [],\n  unsupportedClaimIds: [],\n  reviewSummary: null,\n  reviewEngineExecuted: false,\n  sourceFetchExecuted: false,\n  sourceVerificationExecuted: false,\n  deterministicMatchingPreviewExecuted: false,\n  claimSourceMatchingExecuted: false,\n  persisted: false,\n  persistable: false,\n  persistableCandidate: false,\n  canonicalMaterialPreview: null,\n  payloadFingerprintPreview: null,\n  sideEffects: $json.sideEffects\n} }];"
+      }
+    },
+    {
+      "id": "review-engine-preview-output",
+      "name": "Review Engine Dry-Run Preview Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2860,
+        -380
+      ],
+      "parameters": {
+        "jsCode": "const sourceFetchPreviews = $json.sourceFetchPreviews ?? [];\nconst usableSourceIds = new Set(sourceFetchPreviews.filter((source) => source.fetchSucceeded === true && source.textPreview).map((source) => String(source.sourceId)));\nconst sourceTextById = new Map(sourceFetchPreviews.filter((source) => usableSourceIds.has(String(source.sourceId))).map((source) => [String(source.sourceId), String(source.textPreview ?? '').toLowerCase()]));\nconst claimCandidates = $json.claimCandidates ?? [];\nconst claimMatchPreviews = claimCandidates.map((claim) => {\n  const normalized = String(claim.normalizedClaim ?? '').toLowerCase();\n  const tokens = normalized.split(/\\s+/).filter((token) => token.length >= 3).slice(0, 8);\n  const matchedSourceIds = [];\n  for (const [sourceId, text] of sourceTextById.entries()) {\n    const hitCount = tokens.filter((token) => text.includes(token)).length;\n    if (hitCount >= 1) matchedSourceIds.push(sourceId);\n  }\n  return {\n    claimId: claim.claimId,\n    originalText: claim.originalText,\n    normalizedClaim: claim.normalizedClaim,\n    claimType: claim.claimType,\n    riskLevel: claim.riskLevel,\n    sourceRequired: claim.sourceRequired,\n    previewStatus: matchedSourceIds.length > 0 ? 'manual_review' : 'verification_required',\n    supportedBySourceIds: [],\n    verificationRequiredSourceIds: matchedSourceIds.length > 0 ? matchedSourceIds : (claim.candidateSourceIds ?? []),\n    unsupportedReason: matchedSourceIds.length > 0 ? null : 'Safe preview text did not contain enough deterministic overlap. Human or LLM review required.',\n    medicalRiskNotes: claim.riskLevel === 'medium' ? ['Medical caution claim requires human review before persistence.'] : [],\n    requiredChangeIds: []\n  };\n});\nconst verificationClaimIds = claimMatchPreviews.map((claim) => claim.claimId);\nconst unsupportedClaimIds = [];\nconst approvedClaimIds = [];\nconst criticalIssues = claimMatchPreviews.filter((claim) => claim.riskLevel === 'critical').length;\nconst requiredChanges = [];\nconst reviewSummary = {\n  totalClaims: claimMatchPreviews.length,\n  supportedClaims: 0,\n  partiallySupportedClaims: claimMatchPreviews.filter((claim) => claim.previewStatus === 'manual_review').length,\n  unsupportedClaims: 0,\n  verificationRequiredClaims: verificationClaimIds.length,\n  criticalIssues\n};\nreturn [{ json: {\n  success: true,\n  dryRun: true,\n  inputMode: $json.inputMode,\n  contentId: String($json.contentId),\n  revisionId: String($json.revisionId),\n  revisionNumber: $json.revisionNumber,\n  inputRevisionStatus: $json.revisionStatus,\n  title: $json.title,\n  summary: $json.summary,\n  slug: $json.slug,\n  locale: $json.locale ?? 'ko-KR',\n  country: $json.country ?? 'KR',\n  claimCandidates,\n  claimMatchPreviews,\n  sourceCandidates: $json.sourceCandidates ?? [],\n  sourceFetchPreviews,\n  requiredChanges,\n  approvedClaimIds,\n  verificationClaimIds,\n  unsupportedClaimIds,\n  medicalReviewStatusPreview: 'pending',\n  sourceReviewStatusPreview: 'verification_required',\n  workflowStatusPreview: 'review_preview_only',\n  reviewSummary,\n  reviewEngineExecuted: false,\n  sourceFetchExecuted: true,\n  sourceVerificationExecuted: false,\n  deterministicMatchingPreviewExecuted: true,\n  claimSourceMatchingExecuted: false,\n  persisted: false,\n  persistable: false,\n  persistableCandidate: false,\n  canonicalMaterialPreview: null,\n  payloadFingerprintPreview: null,\n  validationWarnings: [\n    'Review-engine dry-run only: no persistence API was called.',\n    'No actual medical review engine or LLM credential was executed.',\n    'Safe source fetch preview is not source verification; deterministic matching is preview only.',\n    'Failed source fetch previews are preserved and not used for deterministic matching.',\n    'Fingerprint preview remains null until a server canonical helper is used.'\n  ],\n  sideEffects: { ...($json.sideEffects ?? {}), internalDraftGetCalled: true, sourceFetchExecuted: true, externalSourceGetsCalled: true, reviewResultInserted: false, contentRevisionUpdated: false, imagePlanUpdated: false, workflowCompleted: false, notificationSent: false, publicationCreated: false, publishQueueCreated: false, finalApprovalCreated: false, publishedContentsCreated: false, storageUploaded: false, imageGenerated: false }\n} }];"
+      },
+      "notes": "Deterministic preview only: reviewEngineExecuted=false, sourceVerificationExecuted=false, no approved claims, no persistable payload."
+    }
+  ],
+  "connections": {
+    "Manual Trigger Only": {
+      "main": [
+        [
+          {
+            "node": "Controlled Dry-Run Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Controlled Dry-Run Input": {
+      "main": [
+        [
+          {
+            "node": "Input Normalize",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Input Normalize": {
+      "main": [
+        [
+          {
+            "node": "Input Valid Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Input Valid Check": {
+      "main": [
+        [
+          {
+            "node": "Read Internal Draft",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Invalid Input Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Internal Draft": {
+      "main": [
+        [
+          {
+            "node": "Draft Contract Verify",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Draft Contract Verify": {
+      "main": [
+        [
+          {
+            "node": "Draft Contract Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Draft Contract Check": {
+      "main": [
+        [
+          {
+            "node": "Extract Claim Candidates",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Contract Block Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Claim Candidates": {
+      "main": [
+        [
+          {
+            "node": "Build Safe Source Fetch Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Safe Source Fetch Request": {
+      "main": [
+        [
+          {
+            "node": "Safe Source Request Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Safe Source Request Check": {
+      "main": [
+        [
+          {
+            "node": "Fetch Sources via Safe Preview API",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Safe Source Request Block Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Sources via Safe Preview API": {
+      "main": [
+        [
+          {
+            "node": "Safe Source Preview Contract Verify",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Safe Source Preview Contract Verify": {
+      "main": [
+        [
+          {
+            "node": "Safe Source Preview Contract Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Safe Source Preview Contract Check": {
+      "main": [
+        [
+          {
+            "node": "Review Engine Dry-Run Preview Output",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Safe Source Preview Block Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "none",
+    "saveDataErrorExecution": "none"
+  },
+  "staticData": null,
+  "pinData": {}
+}
