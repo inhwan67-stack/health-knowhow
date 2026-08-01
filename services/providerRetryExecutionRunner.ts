@@ -2,9 +2,11 @@ import {
   createProviderExecutionCancellationSequence,
   prepareProviderExecutionCancellationAttempt,
   readProviderExecutionCancellationBoundary,
+  readProviderExecutionTimeoutBoundary,
   runProviderExecutionAttempt,
   type ProviderExecutionCancellationBoundaryMetadata,
   type ProviderExecutionOrchestrationResult,
+  type ProviderExecutionTimeoutBoundaryMetadata,
   type ValidatedProviderExecutionOrchestrator,
 } from "./providerExecutionOrchestrator";
 import {
@@ -50,6 +52,45 @@ export type ProviderRetrySequenceInput = {
   maxAttempts?: number | null;
   requestTimeoutMs?: number | null;
 };
+
+export type ProviderRetryTimeoutObservation =
+  | Readonly<{
+      attemptNumber: number;
+      observationAvailable: true;
+      valid: boolean;
+      providerMayStart: boolean;
+      authoritativeOutcomeKind: ProviderExecutionTimeoutBoundaryMetadata["authoritativeOutcomeKind"];
+      timeoutObserved: boolean;
+      lateSettlementObserved: boolean;
+      jobShouldPause: boolean;
+      manualReviewRequired: boolean;
+      retryMayProceed: false;
+      contractErrorCode: ProviderExecutionTimeoutBoundaryMetadata["contractErrorCode"];
+      sideEffects: ProviderRetryTimeoutObservationSideEffects;
+    }>
+  | Readonly<{
+      attemptNumber: number;
+      observationAvailable: false;
+      valid: false;
+      providerMayStart: false;
+      authoritativeOutcomeKind: null;
+      timeoutObserved: false;
+      lateSettlementObserved: false;
+      jobShouldPause: true;
+      manualReviewRequired: true;
+      retryMayProceed: false;
+      contractErrorCode: null;
+      sideEffects: ProviderRetryTimeoutObservationSideEffects;
+    }>;
+
+type ProviderRetryTimeoutObservationSideEffects = Readonly<{
+  databaseWritten: false;
+  storageUploaded: false;
+  publicationTriggered: false;
+  notificationSent: false;
+  persistable: false;
+  publishable: false;
+}>;
 
 export type ProviderRetrySequenceResult =
   | ProviderRetrySequenceFailure
@@ -172,7 +213,16 @@ type AttemptAudit = {
   currentAttemptCallStatus: "CONFIRMED_NOT_CALLED" | "CONFIRMED_CALLED";
 };
 
+type ProviderRetryTimeoutObservationRecord = Readonly<{
+  attemptNumber: number;
+  attemptResult: ProviderExecutionOrchestrationResult;
+}>;
+
 const runtimeState = new WeakMap<ValidatedProviderRetryRuntime, ProviderRetryRuntimeState>();
+const timeoutObservationRecordsByRetryResult = new WeakMap<
+  Extract<ProviderRetrySequenceResult, object>,
+  readonly ProviderRetryTimeoutObservationRecord[]
+>();
 const safeInternalIdPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const hex64Pattern = /^[a-f0-9]{64}$/;
 const secretLikePattern = /(?:authorization|bearer|token|api[_-]?key|secret|service[_-]?role|sb_secret|sk-[a-z0-9])/i;
@@ -265,6 +315,15 @@ export function buildProviderRetryRuntime(config: unknown): ProviderRetryRuntime
   }
 }
 
+export function readProviderRetryTimeoutObservations(
+  result: ProviderRetrySequenceResult,
+): readonly ProviderRetryTimeoutObservation[] | null {
+  if (!isObjectRecord(result)) return null;
+  const records = timeoutObservationRecordsByRetryResult.get(result);
+  if (!records) return null;
+  return Object.freeze(records.map((record) => buildTimeoutObservation(record)));
+}
+
 export async function runProviderRetrySequence(
   orchestrator: ValidatedProviderExecutionOrchestrator,
   runtime: ValidatedProviderRetryRuntime,
@@ -276,7 +335,7 @@ export async function runProviderRetrySequence(
   }
 
   const normalized = validateRetrySequenceInput(input);
-  if (!normalized.valid) return normalized.failure;
+  if (!normalized.valid) return attachTimeoutObservationRecords(normalized.failure, []);
 
   const counters: SequenceCounters = {
     attemptsStarted: 0,
@@ -292,8 +351,14 @@ export async function runProviderRetrySequence(
     finalAttemptNumber: null,
     finalExecutionDecision: null,
   };
+  const timeoutObservationRecords: ProviderRetryTimeoutObservationRecord[] = [];
   const cancellationSequenceResult = createProviderExecutionCancellationSequence(orchestrator);
-  if (!cancellationSequenceResult.valid) return retryFailure("PROVIDER_RETRY_RUNTIME_CONFIGURATION_ERROR", null, normalized.value.capability);
+  if (!cancellationSequenceResult.valid) {
+    return attachTimeoutObservationRecords(
+      retryFailure("PROVIDER_RETRY_RUNTIME_CONFIGURATION_ERROR", null, normalized.value.capability),
+      timeoutObservationRecords,
+    );
+  }
   const cancellationSequence = cancellationSequenceResult.sequence;
 
   for (let attemptNumber = 1; attemptNumber <= normalized.value.maxAttempts; attemptNumber += 1) {
@@ -303,24 +368,28 @@ export async function runProviderRetrySequence(
     let attempt: ProviderExecutionOrchestrationResult;
     try {
       if (!prepareProviderExecutionCancellationAttempt(orchestrator, cancellationSequence)) {
-        return attemptContractFailure(normalized.value, counters);
+        return attachTimeoutObservationRecords(attemptContractFailure(normalized.value, counters), timeoutObservationRecords);
       }
       attempt = await runProviderExecutionAttempt(orchestrator, attemptInput);
     } catch {
-      return attemptExecutionFailure(normalized.value, counters);
+      return attachTimeoutObservationRecords(attemptExecutionFailure(normalized.value, counters), timeoutObservationRecords);
     }
     const attemptSnapshot = snapshotExactOwnDataObject(attempt, attemptResultKeys);
     if (!attemptSnapshot) {
       markCurrentAttemptUnknown(counters);
-      return attemptContractFailure(normalized.value, counters);
+      return attachTimeoutObservationRecords(attemptContractFailure(normalized.value, counters), timeoutObservationRecords);
     }
 
     const audit = extractAttemptAudit(attemptSnapshot, normalized.value);
     if (!audit) {
       markCurrentAttemptUnknown(counters);
-      return attemptContractFailure(normalized.value, counters);
+      return attachTimeoutObservationRecords(attemptContractFailure(normalized.value, counters), timeoutObservationRecords);
     }
     applyAttemptAudit(counters, audit, attemptNumber);
+    if (timeoutObservationRecords.some((record) => record.attemptNumber === attemptNumber)) {
+      return attachTimeoutObservationRecords(attemptContractFailure(normalized.value, counters), timeoutObservationRecords);
+    }
+    timeoutObservationRecords.push(Object.freeze({ attemptNumber, attemptResult: attempt }));
 
     const contractError = validateAttemptContract(
       attemptSnapshot,
@@ -330,27 +399,27 @@ export async function runProviderRetrySequence(
       counters.sequenceProviderId,
       counters,
     );
-    if (contractError) return attemptContractFailure(normalized.value, counters);
+    if (contractError) return attachTimeoutObservationRecords(attemptContractFailure(normalized.value, counters), timeoutObservationRecords);
 
     const cancellationBoundary = readProviderExecutionCancellationBoundary(attempt);
 
     if (attemptSnapshot.valid && attemptSnapshot.providerExecutionSucceeded) {
       if (!isCompletedSuccessBoundary(cancellationBoundary)) {
-        return sequenceResult(normalized.value, counters, {
+        return attachTimeoutObservationRecords(sequenceResult(normalized.value, counters, {
           sequenceSucceeded: false,
           failClosed: true,
           jobShouldPause: true,
           manualReviewRequired: attemptSnapshot.manualReviewRequired === true || isMedicalSafetyCapability(normalized.value.capability),
           reasonCode: "PROVIDER_RETRY_SEQUENCE_STOPPED_PREVIEW",
-        });
+        }), timeoutObservationRecords);
       }
-      return sequenceResult(normalized.value, counters, {
+      return attachTimeoutObservationRecords(sequenceResult(normalized.value, counters, {
         sequenceSucceeded: true,
         failClosed: false,
         jobShouldPause: false,
         manualReviewRequired: false,
         reasonCode: "PROVIDER_RETRY_SEQUENCE_SUCCEEDED_PREVIEW",
-      });
+      }), timeoutObservationRecords);
     }
 
     const finalDecision = readFinalExecutionDecision(counters);
@@ -367,7 +436,7 @@ export async function runProviderRetrySequence(
         finalDecision?.retryable === true &&
         finalDecision?.attemptsExhausted === true &&
         attemptNumber >= normalized.value.maxAttempts;
-      return sequenceResult(normalized.value, counters, {
+      return attachTimeoutObservationRecords(sequenceResult(normalized.value, counters, {
         sequenceSucceeded: false,
         failClosed: true,
         jobShouldPause: attemptSnapshot.jobShouldPause === true || cancellationBoundary?.jobShouldPause === true || boundaryMissingOrInvalid,
@@ -376,12 +445,12 @@ export async function runProviderRetrySequence(
           cancellationBoundary?.manualReviewRequired === true ||
           (isMedicalSafetyCapability(normalized.value.capability) && boundaryMissingOrInvalid),
         reasonCode: exhausted ? "PROVIDER_RETRY_SEQUENCE_EXHAUSTED_PREVIEW" : "PROVIDER_RETRY_SEQUENCE_STOPPED_PREVIEW",
-      });
+      }), timeoutObservationRecords);
     }
 
     const delayMs = finalDecision?.nextRetryDelayMs;
     if (!isSafeRetryDelayMs(delayMs)) {
-      return attemptContractFailure(normalized.value, counters);
+      return attachTimeoutObservationRecords(attemptContractFailure(normalized.value, counters), timeoutObservationRecords);
     }
 
     counters.retryWaitCount += 1;
@@ -389,18 +458,18 @@ export async function runProviderRetrySequence(
     try {
       await state.sleep(delayMs);
     } catch {
-      return sleepFailure(normalized.value, counters);
+      return attachTimeoutObservationRecords(sleepFailure(normalized.value, counters), timeoutObservationRecords);
     }
     counters.retryExecutedCount += 1;
   }
 
-  return sequenceResult(normalized.value, counters, {
+  return attachTimeoutObservationRecords(sequenceResult(normalized.value, counters, {
     sequenceSucceeded: false,
     failClosed: true,
     jobShouldPause: true,
     manualReviewRequired: isMedicalSafetyCapability(normalized.value.capability),
     reasonCode: "PROVIDER_RETRY_SEQUENCE_EXHAUSTED_PREVIEW",
-  });
+  }), timeoutObservationRecords);
 }
 
 function buildAttemptInput(input: NormalizedProviderRetrySequenceInput, attemptNumber: number): Record<string, unknown> {
@@ -416,6 +485,69 @@ function buildAttemptInput(input: NormalizedProviderRetrySequenceInput, attemptN
     retryAfterMs: null,
     requestTimeoutMs: input.requestTimeoutMs,
   };
+}
+
+function attachTimeoutObservationRecords<T extends ProviderRetrySequenceResult>(
+  result: T,
+  records: readonly ProviderRetryTimeoutObservationRecord[],
+): T {
+  const frozenRecords = Object.freeze(
+    records.map((record) =>
+      Object.freeze({
+        attemptNumber: record.attemptNumber,
+        attemptResult: record.attemptResult,
+      }),
+    ),
+  );
+  timeoutObservationRecordsByRetryResult.set(result, frozenRecords);
+  return result;
+}
+
+function buildTimeoutObservation(record: ProviderRetryTimeoutObservationRecord): ProviderRetryTimeoutObservation {
+  const boundary = readProviderExecutionTimeoutBoundary(record.attemptResult);
+  if (!boundary) return missingTimeoutObservation(record.attemptNumber);
+  return Object.freeze({
+    attemptNumber: record.attemptNumber,
+    observationAvailable: true,
+    valid: boundary.valid,
+    providerMayStart: boundary.providerMayStart,
+    authoritativeOutcomeKind: boundary.authoritativeOutcomeKind,
+    timeoutObserved: boundary.timeoutObserved,
+    lateSettlementObserved: boundary.lateSettlementObserved,
+    jobShouldPause: boundary.jobShouldPause,
+    manualReviewRequired: boundary.manualReviewRequired,
+    retryMayProceed: false,
+    contractErrorCode: boundary.contractErrorCode,
+    sideEffects: timeoutObservationSideEffects(),
+  });
+}
+
+function missingTimeoutObservation(attemptNumber: number): ProviderRetryTimeoutObservation {
+  return Object.freeze({
+    attemptNumber,
+    observationAvailable: false,
+    valid: false,
+    providerMayStart: false,
+    authoritativeOutcomeKind: null,
+    timeoutObserved: false,
+    lateSettlementObserved: false,
+    jobShouldPause: true,
+    manualReviewRequired: true,
+    retryMayProceed: false,
+    contractErrorCode: null,
+    sideEffects: timeoutObservationSideEffects(),
+  });
+}
+
+function timeoutObservationSideEffects(): ProviderRetryTimeoutObservationSideEffects {
+  return Object.freeze({
+    databaseWritten: false,
+    storageUploaded: false,
+    publicationTriggered: false,
+    notificationSent: false,
+    persistable: false,
+    publishable: false,
+  });
 }
 
 function extractAttemptAudit(

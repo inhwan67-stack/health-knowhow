@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   buildProviderExecutionOrchestrator,
   type ProviderExecutionOrchestrationResult,
+  type ProviderExecutionOrchestratorOptions,
 } from "./providerExecutionOrchestrator";
 import type {
   ProviderAdapterContract,
@@ -11,6 +12,7 @@ import type {
 } from "./providerGatewayContract";
 import {
   buildProviderRetryRuntime,
+  readProviderRetryTimeoutObservations,
   runProviderRetrySequence,
   type ProviderRetrySequenceInput,
   type ValidatedProviderRetryRuntime,
@@ -36,8 +38,11 @@ function adapter(
   };
 }
 
-function orchestrator(execute?: ProviderAdapterContract["execute"]) {
-  const result = buildProviderExecutionOrchestrator([adapter(execute)]);
+function orchestrator(
+  execute?: ProviderAdapterContract["execute"],
+  options: ProviderExecutionOrchestratorOptions = {},
+) {
+  const result = buildProviderExecutionOrchestrator([adapter(execute)], options);
   if (!result.valid) throw new Error("Expected valid orchestrator");
   return result.orchestrator;
 }
@@ -46,6 +51,36 @@ function runtime(sleep = vi.fn(async () => undefined)) {
   const result = buildProviderRetryRuntime({ sleep });
   if (!result.valid) throw new Error("Expected valid runtime");
   return { runtime: result.runtime, sleep };
+}
+
+function fakeTimeoutScheduler() {
+  const callbacks: Array<() => void> = [];
+  const handles: unknown[] = [];
+  const schedule = vi.fn((delayMs: number, callback: () => void) => {
+    const handle = Object.freeze({ delayMs, id: handles.length + 1 });
+    handles.push(handle);
+    callbacks.push(callback);
+    return handle;
+  });
+  const cleanup = vi.fn();
+  return {
+    timeoutScheduler: { schedule, cleanup },
+    fire: (index = 0) => callbacks[index]?.(),
+    callbacks,
+    handles,
+    schedule,
+    cleanup,
+  };
+}
+
+function deferredProviderResult() {
+  let resolve!: (value: ProviderAdapterExecuteResult) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<ProviderAdapterExecuteResult>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
 }
 
 function input(overrides: Partial<ProviderRetrySequenceInput> = {}): ProviderRetrySequenceInput {
@@ -1932,6 +1967,195 @@ describe("provider retry execution runner", () => {
     expect(afterCompletion).toMatchObject({ valid: true, sequenceSucceeded: true });
     expect(execute).toHaveBeenCalledTimes(3);
     expect(sleep).not.toHaveBeenCalled();
+  });
+
+  it("exposes frozen timeout observations without changing retry result shape or counters", async () => {
+    const { runtime: retryRuntime, sleep } = runtime();
+    const result = await runProviderRetrySequence(orchestrator(), retryRuntime, input());
+    const resultBeforeRead = JSON.stringify(result);
+    const keysBeforeRead = Object.keys(result);
+
+    const observations = readProviderRetryTimeoutObservations(result);
+    const observationsAgain = readProviderRetryTimeoutObservations(result);
+
+    expect(observations).not.toBeNull();
+    expect(observationsAgain).not.toBe(observations);
+    expect(Object.isFrozen(observations)).toBe(true);
+    expect(Object.isFrozen(observations?.[0])).toBe(true);
+    expect(Object.isFrozen(observations?.[0]?.sideEffects)).toBe(true);
+    expect(observations).toEqual([
+      expect.objectContaining({
+        attemptNumber: 1,
+        observationAvailable: true,
+        valid: true,
+        providerMayStart: true,
+        timeoutObserved: false,
+        lateSettlementObserved: false,
+        retryMayProceed: false,
+      }),
+    ]);
+    expect(JSON.stringify(result)).toBe(resultBeforeRead);
+    expect(Object.keys(result)).toEqual(keysBeforeRead);
+    expect(JSON.stringify(observations)).not.toMatch(/requestId|capability|providerId|contentId|revisionId|sourceIds/i);
+    expect(JSON.stringify(observations)).not.toMatch(/Coordinator|Scheduler|handle|callback|AbortSignal|AbortController|Promise|Adapter|execute/i);
+    expect(sleep).not.toHaveBeenCalled();
+  });
+
+  it("reports no-timeout success and failure observations while keeping retry disabled", async () => {
+    const { runtime: retryRuntime } = runtime();
+    const success = await runProviderRetrySequence(orchestrator(), retryRuntime, input());
+    const failureResult = await runProviderRetrySequence(
+      orchestrator(vi.fn(async () => failure("AUTHENTICATION_FAILED"))),
+      retryRuntime,
+      input({ requestId: "retry-request-2" }),
+    );
+
+    expect(readProviderRetryTimeoutObservations(success)).toEqual([
+      expect.objectContaining({
+        observationAvailable: true,
+        authoritativeOutcomeKind: "PROVIDER_COMPLETED_BEFORE_TIMEOUT",
+        retryMayProceed: false,
+      }),
+    ]);
+    expect(readProviderRetryTimeoutObservations(failureResult)).toEqual([
+      expect.objectContaining({
+        observationAvailable: true,
+        authoritativeOutcomeKind: "PROVIDER_FAILED_BEFORE_TIMEOUT",
+        retryMayProceed: false,
+      }),
+    ]);
+  });
+
+  it("rereads timeout boundaries so late success and failure become visible without restoring success", async () => {
+    const successScheduler = fakeTimeoutScheduler();
+    const lateSuccess = deferredProviderResult();
+    const executeSuccess = vi.fn(() => lateSuccess.promise);
+    const { runtime: retryRuntime, sleep } = runtime();
+    const successPromise = runProviderRetrySequence(
+      orchestrator(executeSuccess, { timeoutScheduler: successScheduler.timeoutScheduler }),
+      retryRuntime,
+      input({ requestTimeoutMs: 15_000 }),
+    );
+    successScheduler.fire();
+    const timeoutResult = await successPromise;
+    expect(readProviderRetryTimeoutObservations(timeoutResult)).toEqual([
+      expect.objectContaining({
+        timeoutObserved: true,
+        lateSettlementObserved: false,
+        retryMayProceed: false,
+      }),
+    ]);
+
+    lateSuccess.resolve({
+      success: true,
+      providerId: "cdc-safe-fetch",
+      capability: "medical_source_fetch",
+      internalOutputReferenceId: "provider-output-late",
+    });
+    await Promise.resolve();
+    expect(readProviderRetryTimeoutObservations(timeoutResult)).toEqual([
+      expect.objectContaining({
+        timeoutObserved: true,
+        lateSettlementObserved: true,
+        authoritativeOutcomeKind: "CANCELLATION_REQUESTED",
+        retryMayProceed: false,
+      }),
+    ]);
+    expect(timeoutResult).toMatchObject({ sequenceSucceeded: false, retryExecutedCount: 0 });
+
+    const failureScheduler = fakeTimeoutScheduler();
+    const lateFailure = deferredProviderResult();
+    const failurePromise = runProviderRetrySequence(
+      orchestrator(vi.fn(() => lateFailure.promise), { timeoutScheduler: failureScheduler.timeoutScheduler }),
+      retryRuntime,
+      input({ requestId: "retry-request-2", requestTimeoutMs: 15_000 }),
+    );
+    failureScheduler.fire();
+    const failedTimeoutResult = await failurePromise;
+    lateFailure.resolve(failure("NETWORK_ERROR"));
+    await Promise.resolve();
+    expect(readProviderRetryTimeoutObservations(failedTimeoutResult)).toEqual([
+      expect.objectContaining({
+        timeoutObserved: true,
+        lateSettlementObserved: true,
+        authoritativeOutcomeKind: "CANCELLATION_REQUESTED",
+        retryMayProceed: false,
+      }),
+    ]);
+    expect(sleep).not.toHaveBeenCalled();
+  });
+
+  it("orders timeout observations by attempt and isolates multiple sequence results", async () => {
+    const { runtime: retryRuntime, sleep } = runtime();
+    const execute = vi
+      .fn()
+      .mockResolvedValueOnce(failure("RATE_LIMITED"))
+      .mockImplementation(async (request: ProviderAdapterExecuteRequest): Promise<ProviderAdapterExecuteResult> => ({
+        success: true,
+        providerId: request.providerId,
+        capability: request.capability,
+        internalOutputReferenceId: "provider-output-2",
+      }));
+    const first = await runProviderRetrySequence(orchestrator(execute), retryRuntime, input());
+    const second = await runProviderRetrySequence(orchestrator(), retryRuntime, input({ requestId: "retry-request-2" }));
+
+    expect(readProviderRetryTimeoutObservations(first)?.map((observation) => observation.attemptNumber)).toEqual([1, 2]);
+    expect(readProviderRetryTimeoutObservations(second)?.map((observation) => observation.attemptNumber)).toEqual([1]);
+    expect(sleep).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns null for forged, cloned, and JSON-restored retry results", async () => {
+    const { runtime: retryRuntime } = runtime();
+    const result = await runProviderRetrySequence(orchestrator(), retryRuntime, input());
+
+    expect(readProviderRetryTimeoutObservations({ ...result } as typeof result)).toBeNull();
+    expect(readProviderRetryTimeoutObservations(JSON.parse(JSON.stringify(result)) as typeof result)).toBeNull();
+    expect(readProviderRetryTimeoutObservations(Object.freeze({}) as typeof result)).toBeNull();
+  });
+
+  it("uses a conservative missing-boundary observation only from the public reader", async () => {
+    vi.resetModules();
+    vi.doMock("./providerExecutionOrchestrator", async (importOriginal: () => Promise<typeof import("./providerExecutionOrchestrator")>) => {
+      const actual = await importOriginal();
+      return {
+        ...actual,
+        readProviderExecutionTimeoutBoundary: vi.fn(() => null),
+      };
+    });
+    const mockedRunner = await import("./providerRetryExecutionRunner");
+    const mockedOrchestratorModule = await import("./providerExecutionOrchestrator");
+    const mockedOrchestratorResult = mockedOrchestratorModule.buildProviderExecutionOrchestrator([adapter()]);
+    if (!mockedOrchestratorResult.valid) throw new Error("Expected valid mocked orchestrator");
+    const retryRuntimeResult = mockedRunner.buildProviderRetryRuntime({ sleep: vi.fn(async () => undefined) });
+    if (!retryRuntimeResult.valid) throw new Error("Expected valid mocked runtime");
+    const result = await mockedRunner.runProviderRetrySequence(mockedOrchestratorResult.orchestrator, retryRuntimeResult.runtime, input());
+
+    expect(mockedRunner.readProviderRetryTimeoutObservations(result)).toEqual([
+      {
+        attemptNumber: 1,
+        observationAvailable: false,
+        valid: false,
+        providerMayStart: false,
+        authoritativeOutcomeKind: null,
+        timeoutObserved: false,
+        lateSettlementObserved: false,
+        jobShouldPause: true,
+        manualReviewRequired: true,
+        retryMayProceed: false,
+        contractErrorCode: null,
+        sideEffects: {
+          databaseWritten: false,
+          storageUploaded: false,
+          publicationTriggered: false,
+          notificationSent: false,
+          persistable: false,
+          publishable: false,
+        },
+      },
+    ]);
+    expect(result).toMatchObject({ retryExecutedCount: 0 });
+    vi.doUnmock("./providerExecutionOrchestrator");
+    vi.resetModules();
   });
 
   it("keeps Phase 4B-2A2 free of actual timers, abort controllers, and promise races", async () => {
