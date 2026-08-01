@@ -1,5 +1,9 @@
 import {
+  createProviderExecutionCancellationSequence,
+  prepareProviderExecutionCancellationAttempt,
+  readProviderExecutionCancellationBoundary,
   runProviderExecutionAttempt,
+  type ProviderExecutionCancellationBoundaryMetadata,
   type ProviderExecutionOrchestrationResult,
   type ValidatedProviderExecutionOrchestrator,
 } from "./providerExecutionOrchestrator";
@@ -288,6 +292,9 @@ export async function runProviderRetrySequence(
     finalAttemptNumber: null,
     finalExecutionDecision: null,
   };
+  const cancellationSequenceResult = createProviderExecutionCancellationSequence(orchestrator);
+  if (!cancellationSequenceResult.valid) return retryFailure("PROVIDER_RETRY_RUNTIME_CONFIGURATION_ERROR", null, normalized.value.capability);
+  const cancellationSequence = cancellationSequenceResult.sequence;
 
   for (let attemptNumber = 1; attemptNumber <= normalized.value.maxAttempts; attemptNumber += 1) {
     counters.attemptsStarted += 1;
@@ -295,6 +302,9 @@ export async function runProviderRetrySequence(
     const attemptInput = buildAttemptInput(normalized.value, attemptNumber);
     let attempt: ProviderExecutionOrchestrationResult;
     try {
+      if (!prepareProviderExecutionCancellationAttempt(orchestrator, cancellationSequence)) {
+        return attemptContractFailure(normalized.value, counters);
+      }
       attempt = await runProviderExecutionAttempt(orchestrator, attemptInput);
     } catch {
       return attemptExecutionFailure(normalized.value, counters);
@@ -322,7 +332,18 @@ export async function runProviderRetrySequence(
     );
     if (contractError) return attemptContractFailure(normalized.value, counters);
 
+    const cancellationBoundary = readProviderExecutionCancellationBoundary(attempt);
+
     if (attemptSnapshot.valid && attemptSnapshot.providerExecutionSucceeded) {
+      if (!isCompletedSuccessBoundary(cancellationBoundary)) {
+        return sequenceResult(normalized.value, counters, {
+          sequenceSucceeded: false,
+          failClosed: true,
+          jobShouldPause: true,
+          manualReviewRequired: attemptSnapshot.manualReviewRequired === true || isMedicalSafetyCapability(normalized.value.capability),
+          reasonCode: "PROVIDER_RETRY_SEQUENCE_STOPPED_PREVIEW",
+        });
+      }
       return sequenceResult(normalized.value, counters, {
         sequenceSucceeded: true,
         failClosed: false,
@@ -333,7 +354,15 @@ export async function runProviderRetrySequence(
     }
 
     const finalDecision = readFinalExecutionDecision(counters);
-    if (!isRetryWaitAllowed(finalDecision, attemptNumber, normalized.value.maxAttempts)) {
+    const cancellationRetryAllowed =
+      cancellationBoundary?.valid === true &&
+      cancellationBoundary.retryMayProceed === true &&
+      isFailureRetryBoundaryState(cancellationBoundary.lifecycleState) &&
+      cancellationBoundary.jobShouldPause === false &&
+      cancellationBoundary.manualReviewRequired === false;
+    const boundaryMissingOrInvalid = cancellationBoundary?.valid !== true;
+
+    if (!isRetryWaitAllowed(finalDecision, attemptNumber, normalized.value.maxAttempts) || !cancellationRetryAllowed) {
       const exhausted =
         finalDecision?.retryable === true &&
         finalDecision?.attemptsExhausted === true &&
@@ -341,8 +370,11 @@ export async function runProviderRetrySequence(
       return sequenceResult(normalized.value, counters, {
         sequenceSucceeded: false,
         failClosed: true,
-        jobShouldPause: attemptSnapshot.jobShouldPause === true,
-        manualReviewRequired: attemptSnapshot.manualReviewRequired === true,
+        jobShouldPause: attemptSnapshot.jobShouldPause === true || cancellationBoundary?.jobShouldPause === true || boundaryMissingOrInvalid,
+        manualReviewRequired:
+          attemptSnapshot.manualReviewRequired === true ||
+          cancellationBoundary?.manualReviewRequired === true ||
+          (isMedicalSafetyCapability(normalized.value.capability) && boundaryMissingOrInvalid),
         reasonCode: exhausted ? "PROVIDER_RETRY_SEQUENCE_EXHAUSTED_PREVIEW" : "PROVIDER_RETRY_SEQUENCE_STOPPED_PREVIEW",
       });
     }
@@ -431,6 +463,24 @@ function applyAttemptAudit(counters: SequenceCounters, audit: AttemptAudit, atte
 
 function readFinalExecutionDecision(counters: SequenceCounters): ProviderExecutionDecision | null {
   return counters.finalExecutionDecision;
+}
+
+function isCompletedSuccessBoundary(
+  boundary: ProviderExecutionCancellationBoundaryMetadata | null,
+): boolean {
+  return (
+    boundary?.valid === true &&
+    boundary.lifecycleState === "COMPLETED_SUCCESS" &&
+    boundary.retryMayProceed === false &&
+    boundary.jobShouldPause === false &&
+    boundary.manualReviewRequired === false
+  );
+}
+
+function isFailureRetryBoundaryState(
+  state: ProviderExecutionCancellationBoundaryMetadata["lifecycleState"],
+): boolean {
+  return state === "FAILED_BEFORE_CALL" || state === "COMPLETED_FAILURE";
 }
 
 function markCurrentAttemptUnknown(counters: SequenceCounters): void {

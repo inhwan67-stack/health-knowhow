@@ -2,6 +2,9 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   buildProviderExecutionOrchestrator,
+  createProviderExecutionCancellationSequence,
+  prepareProviderExecutionCancellationAttempt,
+  readProviderExecutionCancellationBoundary,
   runProviderExecutionAttempt,
   type ProviderExecutionOrchestratorInput,
   type ValidatedProviderExecutionOrchestrator,
@@ -594,6 +597,201 @@ describe("provider execution orchestrator", () => {
     const second = await runProviderExecutionAttempt(buildOrThrow(), request);
     expect(JSON.stringify({ request, sourceIds })).toBe(before);
     expect(second).toEqual(first);
+  });
+
+  it("attaches cancellation boundary metadata for success, failure, and failed-before-call states", async () => {
+    const success = await runProviderExecutionAttempt(buildOrThrow(), input());
+    expect(readProviderExecutionCancellationBoundary(success)).toMatchObject({
+      lifecycleState: "COMPLETED_SUCCESS",
+      valid: true,
+      retryMayProceed: false,
+      jobShouldPause: false,
+    });
+
+    const providerFailure = await runProviderExecutionAttempt(
+      buildOrThrow([
+        adapter({
+          execute: vi.fn(async (): Promise<ProviderAdapterExecuteResult> => ({
+            success: false,
+            providerId: "cdc-safe-fetch",
+            capability: "medical_source_fetch",
+            failureCode: "RATE_LIMITED",
+          })),
+        }),
+      ]),
+      input(),
+    );
+    expect(readProviderExecutionCancellationBoundary(providerFailure)).toMatchObject({
+      lifecycleState: "COMPLETED_FAILURE",
+      valid: true,
+      retryMayProceed: true,
+      jobShouldPause: false,
+    });
+
+    vi.resetModules();
+    vi.doMock("./providerGatewayContract", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("./providerGatewayContract")>();
+      return {
+        ...actual,
+        validateProviderSelectionForExecution: vi.fn(() => false),
+      };
+    });
+    const mockedModule = await import("./providerExecutionOrchestrator");
+    const buildResult = mockedModule.buildProviderExecutionOrchestrator([adapter()]);
+    if (!buildResult.valid) throw new Error("Expected valid orchestrator");
+    const failedBeforeCall = await mockedModule.runProviderExecutionAttempt(buildResult.orchestrator, input());
+    expect(mockedModule.readProviderExecutionCancellationBoundary(failedBeforeCall)).toMatchObject({
+      lifecycleState: "FAILED_BEFORE_CALL",
+      valid: true,
+      retryMayProceed: true,
+      jobShouldPause: false,
+    });
+    vi.doUnmock("./providerGatewayContract");
+    vi.resetModules();
+  });
+
+  it("uses one cancellation sequence for multiple prepared attempts without exposing it in results", async () => {
+    const execute = vi
+      .fn()
+      .mockResolvedValueOnce({
+        success: false,
+        providerId: "cdc-safe-fetch",
+        capability: "medical_source_fetch",
+        failureCode: "RATE_LIMITED",
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        providerId: "cdc-safe-fetch",
+        capability: "medical_source_fetch",
+        internalOutputReferenceId: "provider-output-2",
+      });
+    const orchestrator = buildOrThrow([adapter({ execute })]);
+    const sequence = createProviderExecutionCancellationSequence(orchestrator);
+
+    expect(sequence).toMatchObject({
+      valid: true,
+      reasonCode: "PROVIDER_EXECUTION_CANCELLATION_SEQUENCE_VALID",
+    });
+    if (!sequence.valid) throw new Error("Expected valid cancellation sequence");
+    expect(Object.isFrozen(sequence.sequence)).toBe(true);
+    expect(prepareProviderExecutionCancellationAttempt(orchestrator, sequence.sequence)).toBe(true);
+    const first = await runProviderExecutionAttempt(orchestrator, input({ attemptNumber: 1 }));
+    expect(prepareProviderExecutionCancellationAttempt(orchestrator, sequence.sequence)).toBe(true);
+    const second = await runProviderExecutionAttempt(orchestrator, input({ attemptNumber: 2 }));
+
+    expect(execute).toHaveBeenCalledTimes(2);
+    expect(readProviderExecutionCancellationBoundary(first)).toMatchObject({ lifecycleState: "COMPLETED_FAILURE", retryMayProceed: true });
+    expect(readProviderExecutionCancellationBoundary(second)).toMatchObject({ lifecycleState: "COMPLETED_SUCCESS", retryMayProceed: false });
+    expect(JSON.stringify({ first, second })).not.toMatch(/supervisor|lifecycle|receipt|cancellation/i);
+  });
+
+  it("binds cancellation sequences to their owning orchestrator and blocks pending overwrites", () => {
+    const owner = buildOrThrow();
+    const other = buildOrThrow();
+    const sequence = createProviderExecutionCancellationSequence(owner);
+    if (!sequence.valid) throw new Error("Expected valid cancellation sequence");
+
+    expect(prepareProviderExecutionCancellationAttempt(other, sequence.sequence)).toBe(false);
+    expect(prepareProviderExecutionCancellationAttempt(owner, sequence.sequence)).toBe(true);
+    expect(prepareProviderExecutionCancellationAttempt(owner, sequence.sequence)).toBe(false);
+  });
+
+  it("rejects forged, cloned, JSON-restored, null, primitive, and array orchestrators when creating cancellation sequences", () => {
+    const validOrchestrator = buildOrThrow();
+    for (const forged of [{}, { ...validOrchestrator }, JSON.parse("{}"), null, "x", 1, []]) {
+      expect(createProviderExecutionCancellationSequence(forged as ValidatedProviderExecutionOrchestrator)).toEqual({
+        valid: false,
+        sequence: null,
+        failClosed: true,
+        reasonCode: "PROVIDER_EXECUTION_CANCELLATION_SEQUENCE_CONFIGURATION_ERROR",
+      });
+    }
+  });
+
+  it("does not allow ownerless or cross-owner cancellation sequences to prepare attempts", () => {
+    const owner = buildOrThrow();
+    const other = buildOrThrow();
+    const validSequence = createProviderExecutionCancellationSequence(owner);
+    if (!validSequence.valid) throw new Error("Expected valid cancellation sequence");
+    const invalidSequence = createProviderExecutionCancellationSequence({} as ValidatedProviderExecutionOrchestrator);
+    expect(invalidSequence.sequence).toBeNull();
+
+    expect(prepareProviderExecutionCancellationAttempt(owner, {} as never)).toBe(false);
+    expect(prepareProviderExecutionCancellationAttempt(owner, JSON.parse("{}") as never)).toBe(false);
+    expect(prepareProviderExecutionCancellationAttempt(other, validSequence.sequence)).toBe(false);
+  });
+
+  it("fails closed when terminal cancellation lifecycle transitions fail", async () => {
+    for (const transitionName of [
+      "markProviderCancellationLifecycleCompletedSuccess",
+      "markProviderCancellationLifecycleCompletedFailure",
+    ] as const) {
+      vi.resetModules();
+      vi.doMock("./providerCancellationSupervisor", async (importOriginal) => {
+        const actual = await importOriginal<typeof import("./providerCancellationSupervisor")>();
+        return {
+          ...actual,
+          [transitionName]: vi.fn(() => ({
+            valid: false,
+            lifecycle: null,
+            requestId: null,
+            capability: null,
+            providerId: null,
+            state: "CONTRACT_ERROR",
+            cancellationRequested: false,
+            cancellationConfirmed: false,
+            providerSettled: false,
+            settlementKind: null,
+            retryMayProceed: false,
+            jobShouldPause: true,
+            manualReviewRequired: true,
+            reasonCode: "PROVIDER_CANCELLATION_CONTRACT_ERROR",
+            databaseWritten: false,
+            storageUploaded: false,
+            publicationTriggered: false,
+            notificationSent: false,
+          })),
+        };
+      });
+      const mockedModule = await import("./providerExecutionOrchestrator");
+      const execute = vi.fn(async (): Promise<ProviderAdapterExecuteResult> =>
+        transitionName === "markProviderCancellationLifecycleCompletedSuccess"
+          ? {
+              success: true,
+              providerId: "cdc-safe-fetch",
+              capability: "medical_source_fetch",
+              internalOutputReferenceId: "provider-output-1",
+            }
+          : {
+              success: false,
+              providerId: "cdc-safe-fetch",
+              capability: "medical_source_fetch",
+              failureCode: "RATE_LIMITED",
+            },
+      );
+      const buildResult = mockedModule.buildProviderExecutionOrchestrator([adapter({ execute })]);
+      if (!buildResult.valid) throw new Error("Expected valid orchestrator");
+      const result = await mockedModule.runProviderExecutionAttempt(buildResult.orchestrator, input());
+
+      expect(execute).toHaveBeenCalledTimes(1);
+      expect(result).toMatchObject({
+        valid: false,
+        providerExecutionAttempted: true,
+        providerExecutionSucceeded: false,
+        providerCallCount: 1,
+        failClosed: true,
+        jobShouldPause: true,
+        manualReviewRequired: true,
+        reasonCode: "PROVIDER_EXECUTION_POLICY_CONTRACT_ERROR",
+      });
+      expect(mockedModule.readProviderExecutionCancellationBoundary(result)).toMatchObject({
+        valid: false,
+        retryMayProceed: false,
+        jobShouldPause: true,
+      });
+      vi.doUnmock("./providerCancellationSupervisor");
+      vi.resetModules();
+    }
   });
 
   it("does not expose tokens, raw payloads, registries, selections, adapters, or execute functions", async () => {

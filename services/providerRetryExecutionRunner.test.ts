@@ -71,6 +71,40 @@ function failure(failureCode: string): ProviderAdapterExecuteResult {
   } as ProviderAdapterExecuteResult;
 }
 
+function retryBoundaryAllowed() {
+  return Object.freeze({
+    lifecycleState: "COMPLETED_FAILURE",
+    retryMayProceed: true,
+    valid: true,
+    jobShouldPause: false,
+    manualReviewRequired: false,
+    reasonCode: "PROVIDER_CANCELLATION_RETRY_BOUNDARY_SAFE",
+  });
+}
+
+function completedSuccessBoundary() {
+  return Object.freeze({
+    lifecycleState: "COMPLETED_SUCCESS",
+    retryMayProceed: false,
+    valid: true,
+    jobShouldPause: false,
+    manualReviewRequired: false,
+    reasonCode: "PROVIDER_CANCELLATION_SEQUENCE_ALREADY_SUCCEEDED",
+  });
+}
+
+function mockedCancellationSequenceFunctions() {
+  return {
+    createProviderExecutionCancellationSequence: vi.fn(() => ({
+      valid: true,
+      sequence: Object.freeze({}),
+      failClosed: false,
+      reasonCode: "PROVIDER_EXECUTION_CANCELLATION_SEQUENCE_VALID",
+    })),
+    prepareProviderExecutionCancellationAttempt: vi.fn(() => true),
+  };
+}
+
 function baseDecision(overrides: Record<string, unknown> = {}) {
   return {
     valid: true,
@@ -576,6 +610,7 @@ describe("provider retry execution runner", () => {
       const actual = await importOriginal<typeof import("./providerExecutionOrchestrator")>();
       return {
         ...actual,
+        ...mockedCancellationSequenceFunctions(),
         runProviderExecutionAttempt: vi.fn(async (): Promise<ProviderExecutionOrchestrationResult> => ({
           valid: true,
           requestId: "retry-request-1",
@@ -635,6 +670,7 @@ describe("provider retry execution runner", () => {
       const actual = await importOriginal<typeof import("./providerExecutionOrchestrator")>();
       return {
         ...actual,
+        ...mockedCancellationSequenceFunctions(),
         runProviderExecutionAttempt: vi.fn(async () => ({
           valid: true,
           requestId: "retry-request-1",
@@ -692,6 +728,7 @@ describe("provider retry execution runner", () => {
         const actual = await importOriginal<typeof import("./providerExecutionOrchestrator")>();
         return {
           ...actual,
+        ...mockedCancellationSequenceFunctions(),
           runProviderExecutionAttempt: implementation,
         };
       });
@@ -819,7 +856,9 @@ describe("provider retry execution runner", () => {
         } as ProviderExecutionOrchestrationResult;
         return {
           ...actual,
+        ...mockedCancellationSequenceFunctions(),
           runProviderExecutionAttempt: vi.fn().mockResolvedValueOnce(first).mockResolvedValueOnce(second),
+          readProviderExecutionCancellationBoundary: vi.fn(() => retryBoundaryAllowed()),
         };
       });
       const mockedRunner = await import("./providerRetryExecutionRunner");
@@ -872,6 +911,7 @@ describe("provider retry execution runner", () => {
         const actual = await importOriginal<typeof import("./providerExecutionOrchestrator")>();
         return {
           ...actual,
+        ...mockedCancellationSequenceFunctions(),
           runProviderExecutionAttempt: vi.fn(async () => baseAttempt({ executionDecision })),
         };
       });
@@ -937,7 +977,7 @@ describe("provider retry execution runner", () => {
       vi.resetModules();
       vi.doMock("./providerExecutionOrchestrator", async (importOriginal) => {
         const actual = await importOriginal<typeof import("./providerExecutionOrchestrator")>();
-        return { ...actual, runProviderExecutionAttempt: vi.fn(async () => baseAttempt({ executionDecision })) };
+        return { ...actual, ...mockedCancellationSequenceFunctions(), runProviderExecutionAttempt: vi.fn(async () => baseAttempt({ executionDecision })) };
       });
       const mockedRunner = await import("./providerRetryExecutionRunner");
       const sleep = vi.fn(async () => undefined);
@@ -980,7 +1020,7 @@ describe("provider retry execution runner", () => {
       vi.resetModules();
       vi.doMock("./providerExecutionOrchestrator", async (importOriginal) => {
         const actual = await importOriginal<typeof import("./providerExecutionOrchestrator")>();
-        return { ...actual, runProviderExecutionAttempt: vi.fn(async () => baseAttempt({ executionDecision })) };
+        return { ...actual, ...mockedCancellationSequenceFunctions(), runProviderExecutionAttempt: vi.fn(async () => baseAttempt({ executionDecision })) };
       });
       const mockedRunner = await import("./providerRetryExecutionRunner");
       const sleep = vi.fn(async () => undefined);
@@ -1055,6 +1095,7 @@ describe("provider retry execution runner", () => {
       const actual = await importOriginal<typeof import("./providerExecutionOrchestrator")>();
       return {
         ...actual,
+        ...mockedCancellationSequenceFunctions(),
         runProviderExecutionAttempt: vi.fn(async () =>
           baseAttempt({
             executionDecision: baseDecision({ nextRetryDelayMs: 3000 }),
@@ -1085,6 +1126,7 @@ describe("provider retry execution runner", () => {
         const actual = await importOriginal<typeof import("./providerExecutionOrchestrator")>();
         return {
           ...actual,
+        ...mockedCancellationSequenceFunctions(),
           runProviderExecutionAttempt: vi.fn(async () =>
             baseAttempt({
               executionDecision: baseDecision({
@@ -1119,6 +1161,7 @@ describe("provider retry execution runner", () => {
         const actual = await importOriginal<typeof import("./providerExecutionOrchestrator")>();
         return {
           ...actual,
+        ...mockedCancellationSequenceFunctions(),
           runProviderExecutionAttempt: vi.fn(async () => baseAttempt({ executionDecision: baseDecision({ httpStatus }) })),
         };
       });
@@ -1181,7 +1224,7 @@ describe("provider retry execution runner", () => {
       vi.resetModules();
       vi.doMock("./providerExecutionOrchestrator", async (importOriginal) => {
         const actual = await importOriginal<typeof import("./providerExecutionOrchestrator")>();
-        return { ...actual, runProviderExecutionAttempt: vi.fn(async () => baseAttempt({ executionDecision })) };
+        return { ...actual, ...mockedCancellationSequenceFunctions(), runProviderExecutionAttempt: vi.fn(async () => baseAttempt({ executionDecision })) };
       });
       const mockedRunner = await import("./providerRetryExecutionRunner");
       const sleep = vi.fn(async () => undefined);
@@ -1216,6 +1259,7 @@ describe("provider retry execution runner", () => {
       const actual = await importOriginal<typeof import("./providerExecutionOrchestrator")>();
       return {
         ...actual,
+        ...mockedCancellationSequenceFunctions(),
         runProviderExecutionAttempt: vi.fn(async () => baseAttempt({ executionDecision: rawDecision })),
       };
     });
@@ -1275,6 +1319,7 @@ describe("provider retry execution runner", () => {
         const actual = await importOriginal<typeof import("./providerExecutionOrchestrator")>();
         return {
           ...actual,
+        ...mockedCancellationSequenceFunctions(),
           runProviderExecutionAttempt: vi.fn(async () => attemptResult),
         };
       });
@@ -1309,7 +1354,7 @@ describe("provider retry execution runner", () => {
       vi.resetModules();
       vi.doMock("./providerExecutionOrchestrator", async (importOriginal) => {
         const actual = await importOriginal<typeof import("./providerExecutionOrchestrator")>();
-        return { ...actual, runProviderExecutionAttempt: vi.fn(async () => attemptResult) };
+        return { ...actual, ...mockedCancellationSequenceFunctions(), runProviderExecutionAttempt: vi.fn(async () => attemptResult) };
       });
       const mockedRunner = await import("./providerRetryExecutionRunner");
       const sleep = vi.fn(async () => undefined);
@@ -1332,7 +1377,7 @@ describe("provider retry execution runner", () => {
     const malformedAttempt = { ...baseAttempt(), providerExecutionAttempted: "true" };
     vi.doMock("./providerExecutionOrchestrator", async (importOriginal) => {
       const actual = await importOriginal<typeof import("./providerExecutionOrchestrator")>();
-      return { ...actual, runProviderExecutionAttempt: vi.fn(async () => malformedAttempt) };
+      return { ...actual, ...mockedCancellationSequenceFunctions(), runProviderExecutionAttempt: vi.fn(async () => malformedAttempt) };
     });
     const mockedRunner = await import("./providerRetryExecutionRunner");
     const sleep = vi.fn(async () => undefined);
@@ -1360,7 +1405,7 @@ describe("provider retry execution runner", () => {
     });
     vi.doMock("./providerExecutionOrchestrator", async (importOriginal) => {
       const actual = await importOriginal<typeof import("./providerExecutionOrchestrator")>();
-      return { ...actual, runProviderExecutionAttempt: vi.fn(async () => proxyAttempt) };
+      return { ...actual, ...mockedCancellationSequenceFunctions(), runProviderExecutionAttempt: vi.fn(async () => proxyAttempt) };
     });
     const mockedRunner = await import("./providerRetryExecutionRunner");
     const sleep = vi.fn(async () => undefined);
@@ -1431,7 +1476,7 @@ describe("provider retry execution runner", () => {
       vi.resetModules();
       vi.doMock("./providerExecutionOrchestrator", async (importOriginal) => {
         const actual = await importOriginal<typeof import("./providerExecutionOrchestrator")>();
-        return { ...actual, runProviderExecutionAttempt: vi.fn(async () => attemptResult) };
+        return { ...actual, ...mockedCancellationSequenceFunctions(), runProviderExecutionAttempt: vi.fn(async () => attemptResult) };
       });
       const mockedRunner = await import("./providerRetryExecutionRunner");
       const sleep = vi.fn(async () => undefined);
@@ -1492,7 +1537,7 @@ describe("provider retry execution runner", () => {
       vi.resetModules();
       vi.doMock("./providerExecutionOrchestrator", async (importOriginal) => {
         const actual = await importOriginal<typeof import("./providerExecutionOrchestrator")>();
-        return { ...actual, runProviderExecutionAttempt: vi.fn(async () => baseAttempt({ executionDecision })) };
+        return { ...actual, ...mockedCancellationSequenceFunctions(), runProviderExecutionAttempt: vi.fn(async () => baseAttempt({ executionDecision })) };
       });
       const mockedRunner = await import("./providerRetryExecutionRunner");
       const sleep = vi.fn(async () => undefined);
@@ -1538,7 +1583,7 @@ describe("provider retry execution runner", () => {
       vi.resetModules();
       vi.doMock("./providerExecutionOrchestrator", async (importOriginal) => {
         const actual = await importOriginal<typeof import("./providerExecutionOrchestrator")>();
-        return { ...actual, runProviderExecutionAttempt: vi.fn(async () => routerAttempt) };
+        return { ...actual, ...mockedCancellationSequenceFunctions(), runProviderExecutionAttempt: vi.fn(async () => routerAttempt) };
       });
       const mockedRunner = await import("./providerRetryExecutionRunner");
       const sleep = vi.fn(async () => undefined);
@@ -1602,7 +1647,12 @@ describe("provider retry execution runner", () => {
     const runProviderExecutionAttempt = vi.fn().mockResolvedValueOnce(baseAttempt()).mockRejectedValueOnce(new Error("secret"));
     vi.doMock("./providerExecutionOrchestrator", async (importOriginal) => {
       const actual = await importOriginal<typeof import("./providerExecutionOrchestrator")>();
-      return { ...actual, runProviderExecutionAttempt };
+      return {
+        ...actual,
+        ...mockedCancellationSequenceFunctions(),
+        runProviderExecutionAttempt,
+        readProviderExecutionCancellationBoundary: vi.fn(() => retryBoundaryAllowed()),
+      };
     });
     const mockedRunner = await import("./providerRetryExecutionRunner");
     const sleep = vi.fn(async () => undefined);
@@ -1623,5 +1673,273 @@ describe("provider retry execution runner", () => {
     });
     vi.doUnmock("./providerExecutionOrchestrator");
     vi.resetModules();
+  });
+
+  it("requires both Phase 3 retry permission and a cancellation-safe retry boundary before retrying", async () => {
+    vi.resetModules();
+    const first = baseAttempt();
+    const second = {
+      ...baseAttempt({
+        providerExecutionSucceeded: true,
+        internalOutputReferenceId: "provider-output-2",
+        executionDecision: null,
+        failClosed: false,
+        jobShouldPause: false,
+        manualReviewRequired: false,
+        reasonCode: "PROVIDER_EXECUTION_SUCCEEDED_PREVIEW",
+      }),
+      selectedProviderId: "cdc-safe-fetch",
+    } as ProviderExecutionOrchestrationResult;
+    const runProviderExecutionAttempt = vi.fn().mockResolvedValueOnce(first).mockResolvedValueOnce(second);
+    vi.doMock("./providerExecutionOrchestrator", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("./providerExecutionOrchestrator")>();
+      return {
+        ...actual,
+        ...mockedCancellationSequenceFunctions(),
+        runProviderExecutionAttempt,
+        readProviderExecutionCancellationBoundary: vi.fn(() => ({
+          ...retryBoundaryAllowed(),
+          retryMayProceed: false,
+          jobShouldPause: true,
+          manualReviewRequired: true,
+        })),
+      };
+    });
+    const mockedRunner = await import("./providerRetryExecutionRunner");
+    const sleep = vi.fn(async () => undefined);
+    const retryRuntimeResult = mockedRunner.buildProviderRetryRuntime({ sleep });
+    if (!retryRuntimeResult.valid) throw new Error("Expected valid mocked runtime");
+    const result = await mockedRunner.runProviderRetrySequence(orchestrator(), retryRuntimeResult.runtime, input());
+
+    expect(runProviderExecutionAttempt).toHaveBeenCalledTimes(1);
+    expect(sleep).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      valid: true,
+      sequenceSucceeded: false,
+      retryExecutedCount: 0,
+      reasonCode: "PROVIDER_RETRY_SEQUENCE_STOPPED_PREVIEW",
+    });
+    vi.doUnmock("./providerExecutionOrchestrator");
+    vi.resetModules();
+  });
+
+  it("does not accept successful attempts without a completed-success cancellation boundary", async () => {
+    for (const boundary of [
+      null,
+      { ...completedSuccessBoundary(), valid: false },
+      { ...completedSuccessBoundary(), lifecycleState: "COMPLETED_FAILURE" },
+      { ...completedSuccessBoundary(), retryMayProceed: true },
+      { ...completedSuccessBoundary(), jobShouldPause: true },
+      { ...completedSuccessBoundary(), manualReviewRequired: true },
+    ]) {
+      vi.resetModules();
+      const successAttempt = baseAttempt({
+        providerExecutionSucceeded: true,
+        internalOutputReferenceId: "provider-output-1",
+        executionDecision: null,
+        failClosed: false,
+        jobShouldPause: false,
+        manualReviewRequired: false,
+        reasonCode: "PROVIDER_EXECUTION_SUCCEEDED_PREVIEW",
+      });
+      const runProviderExecutionAttempt = vi.fn(async () => successAttempt);
+      vi.doMock("./providerExecutionOrchestrator", async (importOriginal) => {
+        const actual = await importOriginal<typeof import("./providerExecutionOrchestrator")>();
+      return {
+        ...actual,
+        ...mockedCancellationSequenceFunctions(),
+        runProviderExecutionAttempt,
+        readProviderExecutionCancellationBoundary: vi.fn(() => boundary),
+      };
+      });
+      const mockedRunner = await import("./providerRetryExecutionRunner");
+      const sleep = vi.fn(async () => undefined);
+      const retryRuntimeResult = mockedRunner.buildProviderRetryRuntime({ sleep });
+      if (!retryRuntimeResult.valid) throw new Error("Expected valid mocked runtime");
+      const result = await mockedRunner.runProviderRetrySequence(orchestrator(), retryRuntimeResult.runtime, input());
+
+      expect(runProviderExecutionAttempt).toHaveBeenCalledTimes(1);
+      expect(sleep).not.toHaveBeenCalled();
+      expect(result).toMatchObject({
+        valid: true,
+        sequenceSucceeded: false,
+        failClosed: true,
+        jobShouldPause: true,
+        manualReviewRequired: true,
+        retryExecutedCount: 0,
+        reasonCode: "PROVIDER_RETRY_SEQUENCE_STOPPED_PREVIEW",
+      });
+      vi.doUnmock("./providerExecutionOrchestrator");
+      vi.resetModules();
+    }
+  });
+
+  it("preserves conservative boundary safety flags when retry is stopped", async () => {
+    vi.resetModules();
+    const runProviderExecutionAttempt = vi.fn(async () => baseAttempt());
+    vi.doMock("./providerExecutionOrchestrator", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("./providerExecutionOrchestrator")>();
+      return {
+        ...actual,
+        ...mockedCancellationSequenceFunctions(),
+        runProviderExecutionAttempt,
+        readProviderExecutionCancellationBoundary: vi.fn(() => ({
+          ...retryBoundaryAllowed(),
+          retryMayProceed: false,
+          jobShouldPause: true,
+          manualReviewRequired: true,
+        })),
+      };
+    });
+    const mockedRunner = await import("./providerRetryExecutionRunner");
+    const sleep = vi.fn(async () => undefined);
+    const retryRuntimeResult = mockedRunner.buildProviderRetryRuntime({ sleep });
+    if (!retryRuntimeResult.valid) throw new Error("Expected valid mocked runtime");
+    const result = await mockedRunner.runProviderRetrySequence(orchestrator(), retryRuntimeResult.runtime, input());
+
+    expect(result).toMatchObject({
+      valid: true,
+      sequenceSucceeded: false,
+      jobShouldPause: true,
+      manualReviewRequired: true,
+      reasonCode: "PROVIDER_RETRY_SEQUENCE_STOPPED_PREVIEW",
+    });
+    expect(sleep).not.toHaveBeenCalled();
+    vi.doUnmock("./providerExecutionOrchestrator");
+    vi.resetModules();
+  });
+
+  it("allows retry only for failed-before-call and completed-failure cancellation boundary states", async () => {
+    for (const lifecycleState of ["FAILED_BEFORE_CALL", "COMPLETED_FAILURE"]) {
+      vi.resetModules();
+      const runProviderExecutionAttempt = vi
+        .fn()
+        .mockResolvedValueOnce(baseAttempt())
+        .mockResolvedValueOnce(
+          baseAttempt({
+            providerExecutionSucceeded: true,
+            internalOutputReferenceId: "provider-output-2",
+            executionDecision: null,
+            failClosed: false,
+            jobShouldPause: false,
+            manualReviewRequired: false,
+            reasonCode: "PROVIDER_EXECUTION_SUCCEEDED_PREVIEW",
+          }),
+        );
+      vi.doMock("./providerExecutionOrchestrator", async (importOriginal) => {
+        const actual = await importOriginal<typeof import("./providerExecutionOrchestrator")>();
+        return {
+          ...actual,
+          ...mockedCancellationSequenceFunctions(),
+          runProviderExecutionAttempt,
+          readProviderExecutionCancellationBoundary: vi
+            .fn()
+            .mockReturnValueOnce({ ...retryBoundaryAllowed(), lifecycleState })
+            .mockReturnValueOnce(completedSuccessBoundary()),
+        };
+      });
+      const mockedRunner = await import("./providerRetryExecutionRunner");
+      const sleep = vi.fn(async () => undefined);
+      const retryRuntimeResult = mockedRunner.buildProviderRetryRuntime({ sleep });
+      if (!retryRuntimeResult.valid) throw new Error("Expected valid mocked runtime");
+      const retryRuntime = retryRuntimeResult.runtime;
+      const result = await mockedRunner.runProviderRetrySequence(orchestrator(), retryRuntime, input());
+      expect(result).toMatchObject({ valid: true, sequenceSucceeded: true, retryExecutedCount: 1 });
+      expect(runProviderExecutionAttempt).toHaveBeenCalledTimes(2);
+      expect(sleep).toHaveBeenCalledTimes(1);
+      vi.doUnmock("./providerExecutionOrchestrator");
+      vi.resetModules();
+    }
+
+    for (const lifecycleState of [
+      "CANCEL_REQUESTED",
+      "CANCEL_CONFIRMED",
+      "CANCEL_UNCONFIRMED",
+      "SETTLED_AFTER_CANCEL_REQUEST",
+      "COMPLETED_SUCCESS",
+    ]) {
+      vi.resetModules();
+      const runProviderExecutionAttempt = vi.fn(async () => baseAttempt());
+      vi.doMock("./providerExecutionOrchestrator", async (importOriginal) => {
+        const actual = await importOriginal<typeof import("./providerExecutionOrchestrator")>();
+        return {
+          ...actual,
+          ...mockedCancellationSequenceFunctions(),
+          runProviderExecutionAttempt,
+          readProviderExecutionCancellationBoundary: vi.fn(() => ({ ...retryBoundaryAllowed(), lifecycleState })),
+        };
+      });
+      const mockedRunner = await import("./providerRetryExecutionRunner");
+      const sleep = vi.fn(async () => undefined);
+      const retryRuntimeResult = mockedRunner.buildProviderRetryRuntime({ sleep });
+      if (!retryRuntimeResult.valid) throw new Error("Expected valid mocked runtime");
+      const retryRuntime = retryRuntimeResult.runtime;
+      const result = await mockedRunner.runProviderRetrySequence(orchestrator(), retryRuntime, input());
+      expect(result).toMatchObject({
+        valid: true,
+        sequenceSucceeded: false,
+        retryExecutedCount: 0,
+        reasonCode: "PROVIDER_RETRY_SEQUENCE_STOPPED_PREVIEW",
+      });
+      expect(runProviderExecutionAttempt).toHaveBeenCalledTimes(1);
+      expect(sleep).not.toHaveBeenCalled();
+      vi.doUnmock("./providerExecutionOrchestrator");
+      vi.resetModules();
+    }
+  });
+
+  it("blocks concurrent same-key retry sequences on the same orchestrator while allowing later and different-key sequences", async () => {
+    let finishFirst!: (value: ProviderAdapterExecuteResult) => void;
+    const firstExecution = new Promise<ProviderAdapterExecuteResult>((resolve) => {
+      finishFirst = resolve;
+    });
+    const execute = vi
+      .fn()
+      .mockImplementationOnce(() => firstExecution)
+      .mockImplementation(async (request: ProviderAdapterExecuteRequest): Promise<ProviderAdapterExecuteResult> => ({
+        success: true,
+        providerId: request.providerId,
+        capability: request.capability,
+        internalOutputReferenceId: `provider-output-${request.requestId}`,
+      }));
+    const actualOrchestrator = orchestrator(execute);
+    const { runtime: retryRuntime, sleep } = runtime();
+
+    const first = runProviderRetrySequence(actualOrchestrator, retryRuntime, input());
+    expect(execute).toHaveBeenCalledTimes(1);
+
+    const second = await runProviderRetrySequence(actualOrchestrator, retryRuntime, input());
+    expect(second).toMatchObject({
+      valid: false,
+      reasonCode: "PROVIDER_RETRY_ATTEMPT_CONTRACT_ERROR",
+      providerCallCount: 0,
+    });
+    expect(execute).toHaveBeenCalledTimes(1);
+
+    const differentKey = await runProviderRetrySequence(actualOrchestrator, retryRuntime, input({ requestId: "retry-request-2" }));
+    expect(differentKey).toMatchObject({ valid: true, sequenceSucceeded: true });
+    expect(execute).toHaveBeenCalledTimes(2);
+
+    finishFirst({
+      success: true,
+      providerId: "cdc-safe-fetch",
+      capability: "medical_source_fetch",
+      internalOutputReferenceId: "provider-output-first",
+    });
+    await expect(first).resolves.toMatchObject({ valid: true, sequenceSucceeded: true });
+
+    const afterCompletion = await runProviderRetrySequence(actualOrchestrator, retryRuntime, input());
+    expect(afterCompletion).toMatchObject({ valid: true, sequenceSucceeded: true });
+    expect(execute).toHaveBeenCalledTimes(3);
+    expect(sleep).not.toHaveBeenCalled();
+  });
+
+  it("keeps Phase 4B-2A2 free of actual timers, abort controllers, and promise races", async () => {
+    const fs = await import("node:fs");
+    const source = fs.readFileSync(new URL("./providerRetryExecutionRunner.ts", import.meta.url), "utf8");
+    expect(source).not.toContain("setTimeout");
+    expect(source).not.toContain("Promise.race");
+    expect(source).not.toContain("AbortController");
+    expect(source).not.toContain("AbortSignal");
   });
 });

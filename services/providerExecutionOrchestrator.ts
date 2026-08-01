@@ -9,6 +9,19 @@ import {
   type ValidatedProviderSelection,
 } from "./providerGatewayContract";
 import {
+  buildProviderCancellationRetryBoundaryDecision,
+  createProviderCancellationSupervisor,
+  markProviderCancellationLifecycleCompletedFailure,
+  markProviderCancellationLifecycleCompletedSuccess,
+  markProviderCancellationLifecycleFailedBeforeCall,
+  markProviderCancellationLifecycleRunning,
+  startProviderCancellationLifecycle,
+  type ProviderCancellationReasonCode,
+  type ProviderCancellationState,
+  type ProviderCancellationRetryBoundaryResult,
+  type ValidatedProviderCancellationSupervisor,
+} from "./providerCancellationSupervisor";
+import {
   buildProviderExecutionDecision,
   providerExecutionDefaults,
   type ProviderExecutionDecision,
@@ -23,10 +36,29 @@ import {
 } from "./providerResiliencePolicy";
 
 declare const validatedProviderExecutionOrchestratorBrand: unique symbol;
+declare const validatedProviderExecutionCancellationSequenceBrand: unique symbol;
 
 export type ValidatedProviderExecutionOrchestrator = {
   readonly [validatedProviderExecutionOrchestratorBrand]: true;
 };
+
+export type ValidatedProviderExecutionCancellationSequence = {
+  readonly [validatedProviderExecutionCancellationSequenceBrand]: true;
+};
+
+export type ProviderExecutionCancellationSequenceBuildResult =
+  | {
+      valid: true;
+      sequence: ValidatedProviderExecutionCancellationSequence;
+      failClosed: false;
+      reasonCode: "PROVIDER_EXECUTION_CANCELLATION_SEQUENCE_VALID";
+    }
+  | {
+      valid: false;
+      sequence: null;
+      failClosed: true;
+      reasonCode: "PROVIDER_EXECUTION_CANCELLATION_SEQUENCE_CONFIGURATION_ERROR";
+    };
 
 export type ProviderExecutionOrchestratorBuildResult =
   | {
@@ -125,9 +157,31 @@ type ProviderExecutionOrchestratorState = {
   registry: ValidatedProviderRegistry;
   bindings: ReadonlyMap<RegisteredProviderId, ProviderExecutionBinding>;
   providerIds: readonly RegisteredProviderId[];
+  cancellationSupervisor: ValidatedProviderCancellationSupervisor;
+};
+
+export type ProviderExecutionCancellationBoundaryMetadata = {
+  lifecycleState: ProviderCancellationState | null;
+  retryMayProceed: boolean;
+  valid: boolean;
+  jobShouldPause: boolean;
+  manualReviewRequired: boolean;
+  reasonCode: ProviderCancellationReasonCode | null;
 };
 
 const orchestratorState = new WeakMap<ValidatedProviderExecutionOrchestrator, ProviderExecutionOrchestratorState>();
+const cancellationBoundaryByResult = new WeakMap<
+  Extract<ProviderExecutionOrchestrationResult, object>,
+  ProviderExecutionCancellationBoundaryMetadata
+>();
+const cancellationSequenceState = new WeakMap<
+  ValidatedProviderExecutionCancellationSequence,
+  { orchestrator: ValidatedProviderExecutionOrchestrator }
+>();
+const pendingCancellationSequenceByOrchestrator = new WeakMap<
+  ValidatedProviderExecutionOrchestrator,
+  ValidatedProviderExecutionCancellationSequence
+>();
 const safeInternalIdPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const hex64Pattern = /^[a-f0-9]{64}$/;
 const secretLikePattern = /(?:authorization|bearer|token|api[_-]?key|secret|service[_-]?role|sb_secret|sk-[a-z0-9])/i;
@@ -172,10 +226,12 @@ export function buildProviderExecutionOrchestrator(
 
   const orchestrator = Object.freeze({}) as ValidatedProviderExecutionOrchestrator;
   const providerIds = Object.freeze([...registryResult.providerIds]);
+  const cancellationSupervisor = createProviderCancellationSupervisor().supervisor;
   orchestratorState.set(orchestrator, {
     registry: registryResult.registry,
     bindings,
     providerIds,
+    cancellationSupervisor,
   });
 
   return {
@@ -188,9 +244,62 @@ export function buildProviderExecutionOrchestrator(
   };
 }
 
+export function createProviderExecutionCancellationSequence(
+  orchestrator: ValidatedProviderExecutionOrchestrator,
+): ProviderExecutionCancellationSequenceBuildResult {
+  const state = orchestratorState.get(orchestrator);
+  if (!state || !Object.isFrozen(orchestrator)) {
+    return Object.freeze({
+      valid: false,
+      sequence: null,
+      failClosed: true,
+      reasonCode: "PROVIDER_EXECUTION_CANCELLATION_SEQUENCE_CONFIGURATION_ERROR",
+    });
+  }
+  const sequence = Object.freeze({}) as ValidatedProviderExecutionCancellationSequence;
+  cancellationSequenceState.set(sequence, { orchestrator });
+  return {
+    valid: true,
+    sequence,
+    failClosed: false,
+    reasonCode: "PROVIDER_EXECUTION_CANCELLATION_SEQUENCE_VALID",
+  };
+}
+
+export function prepareProviderExecutionCancellationAttempt(
+  orchestrator: ValidatedProviderExecutionOrchestrator,
+  sequence: ValidatedProviderExecutionCancellationSequence,
+): boolean {
+  const sequenceState = cancellationSequenceState.get(sequence);
+  if (!sequenceState || !Object.isFrozen(sequence)) return false;
+  if (!orchestratorState.has(orchestrator) || !Object.isFrozen(orchestrator)) return false;
+  if (sequenceState.orchestrator !== orchestrator) return false;
+  if (pendingCancellationSequenceByOrchestrator.has(orchestrator)) return false;
+  pendingCancellationSequenceByOrchestrator.set(orchestrator, sequence);
+  return true;
+}
+
 export async function runProviderExecutionAttempt(
   orchestrator: ValidatedProviderExecutionOrchestrator,
   input: unknown,
+): Promise<ProviderExecutionOrchestrationResult> {
+  const state = orchestratorState.get(orchestrator);
+  if (!state || !Object.isFrozen(orchestrator)) {
+    return orchestrationFailure("PROVIDER_ORCHESTRATOR_CONFIGURATION_ERROR", false, null);
+  }
+  const pendingSequence = pendingCancellationSequenceByOrchestrator.get(orchestrator);
+  if (pendingSequence) pendingCancellationSequenceByOrchestrator.delete(orchestrator);
+  const pendingState = pendingSequence ? cancellationSequenceState.get(pendingSequence) : null;
+  if (pendingSequence && (!pendingState || pendingState.orchestrator !== orchestrator)) {
+    return orchestrationFailure("PROVIDER_ORCHESTRATOR_CONFIGURATION_ERROR", false, null);
+  }
+  return runProviderExecutionAttemptWithCancellation(orchestrator, input, state.cancellationSupervisor);
+}
+
+async function runProviderExecutionAttemptWithCancellation(
+  orchestrator: ValidatedProviderExecutionOrchestrator,
+  input: unknown,
+  cancellationSupervisor: ValidatedProviderCancellationSupervisor,
 ): Promise<ProviderExecutionOrchestrationResult> {
   const state = orchestratorState.get(orchestrator);
   if (!state || !Object.isFrozen(orchestrator)) {
@@ -204,22 +313,63 @@ export async function runProviderExecutionAttempt(
   if (!selection.selected) return summarizeRouterFailure(selection);
 
   const binding = state.bindings.get(selection.selectedProviderId);
+  const lifecycleResult = startProviderCancellationLifecycle(cancellationSupervisor, {
+    requestId: normalizedInput.value.requestId,
+    capability: normalizedInput.value.capability,
+    providerId: selection.selectedProviderId,
+  });
+  if (!lifecycleResult.valid) {
+    return attachCancellationBoundary(
+      orchestrationFailure("PROVIDER_EXECUTION_BINDING_CONFIGURATION_ERROR", isMedicalSafetyCapability(normalizedInput.value.capability), null),
+      null,
+    );
+  }
+  const lifecycle = lifecycleResult.lifecycle;
+
   if (!isValidBinding(binding, selection)) {
+    const failedBeforeCall = markProviderCancellationLifecycleFailedBeforeCall(cancellationSupervisor, lifecycle);
     const executionDecision = buildConfigurationExecutionDecision(normalizedInput.value, selection);
-    return orchestrationFailure("PROVIDER_EXECUTION_BINDING_CONFIGURATION_ERROR", true, executionDecision);
+    if (!failedBeforeCall.valid) {
+      return attachCancellationBoundary(
+        orchestrationFailure("PROVIDER_EXECUTION_BINDING_CONFIGURATION_ERROR", true, executionDecision),
+        null,
+      );
+    }
+    return attachCancellationBoundary(
+      orchestrationFailure("PROVIDER_EXECUTION_BINDING_CONFIGURATION_ERROR", true, executionDecision),
+      buildProviderCancellationRetryBoundaryDecision(lifecycle),
+    );
   }
 
   const executeRequest = buildExecuteRequest(normalizedInput.value, selection);
+  const running = markProviderCancellationLifecycleRunning(cancellationSupervisor, lifecycle);
+  if (!running.valid) {
+    return attachCancellationBoundary(
+      orchestrationFailure("PROVIDER_EXECUTION_BINDING_CONFIGURATION_ERROR", isMedicalSafetyCapability(normalizedInput.value.capability), null),
+      null,
+    );
+  }
   let providerResult: ProviderAdapterExecuteResult;
   try {
     providerResult = await binding.execute(executeRequest);
   } catch {
-    return summarizeProviderFailure(normalizedInput.value, selection, "UNKNOWN_PROVIDER_ERROR");
+    const completedFailure = markProviderCancellationLifecycleCompletedFailure(cancellationSupervisor, lifecycle);
+    if (!completedFailure.valid) {
+      return attachCancellationBoundary(providerExecutionPolicyContractFailure(normalizedInput.value, selection), null);
+    }
+    return attachCancellationBoundary(
+      summarizeProviderFailure(normalizedInput.value, selection, "UNKNOWN_PROVIDER_ERROR"),
+      buildProviderCancellationRetryBoundaryDecision(lifecycle),
+    );
   }
 
   const successReferenceId = validateProviderSuccessResult(providerResult, selection);
   if (successReferenceId) {
-    return {
+    const completedSuccess = markProviderCancellationLifecycleCompletedSuccess(cancellationSupervisor, lifecycle);
+    if (!completedSuccess.valid) {
+      return attachCancellationBoundary(providerExecutionPolicyContractFailure(normalizedInput.value, selection), null);
+    }
+    return attachCancellationBoundary({
       valid: true,
       requestId: normalizedInput.value.requestId,
       capability: normalizedInput.value.capability,
@@ -244,11 +394,24 @@ export async function runProviderExecutionAttempt(
       jobShouldPause: false,
       manualReviewRequired: false,
       reasonCode: "PROVIDER_EXECUTION_SUCCEEDED_PREVIEW",
-    };
+    }, buildProviderCancellationRetryBoundaryDecision(lifecycle));
   }
 
   const failureCode = validateProviderFailureResult(providerResult, selection) ?? "INVALID_PROVIDER_RESPONSE";
-  return summarizeProviderFailure(normalizedInput.value, selection, failureCode);
+  const completedFailure = markProviderCancellationLifecycleCompletedFailure(cancellationSupervisor, lifecycle);
+  if (!completedFailure.valid) {
+    return attachCancellationBoundary(providerExecutionPolicyContractFailure(normalizedInput.value, selection), null);
+  }
+  return attachCancellationBoundary(
+    summarizeProviderFailure(normalizedInput.value, selection, failureCode),
+    buildProviderCancellationRetryBoundaryDecision(lifecycle),
+  );
+}
+
+export function readProviderExecutionCancellationBoundary(
+  result: ProviderExecutionOrchestrationResult,
+): ProviderExecutionCancellationBoundaryMetadata | null {
+  return cancellationBoundaryByResult.get(result as Extract<ProviderExecutionOrchestrationResult, object>) ?? null;
 }
 
 function buildExecuteRequest(
@@ -264,6 +427,24 @@ function buildExecuteRequest(
     ...(input.revisionId ? { revisionId: input.revisionId } : {}),
     ...(input.sourceIds ? { sourceIds: Object.freeze([...input.sourceIds]) } : {}),
   };
+}
+
+function attachCancellationBoundary(
+  result: ProviderExecutionOrchestrationResult,
+  boundary: ProviderCancellationRetryBoundaryResult | null,
+): ProviderExecutionOrchestrationResult {
+  cancellationBoundaryByResult.set(
+    result as Extract<ProviderExecutionOrchestrationResult, object>,
+    Object.freeze({
+      lifecycleState: boundary?.state ?? null,
+      retryMayProceed: boundary?.retryMayProceed ?? false,
+      valid: boundary?.valid ?? false,
+      jobShouldPause: boundary?.jobShouldPause ?? true,
+      manualReviewRequired: boundary?.manualReviewRequired ?? result.manualReviewRequired,
+      reasonCode: boundary?.reasonCode ?? "PROVIDER_CANCELLATION_CONTRACT_ERROR",
+    }),
+  );
+  return result;
 }
 
 function summarizeRouterFailure(selection: Extract<ProviderSelectionResult, { selected: false }>): ProviderExecutionOrchestrationResult {
