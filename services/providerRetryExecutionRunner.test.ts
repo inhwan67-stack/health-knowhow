@@ -57,7 +57,7 @@ function input(overrides: Partial<ProviderRetrySequenceInput> = {}): ProviderRet
     revisionId: "13",
     sourceIds: ["2", "3", "4"],
     maxAttempts: 3,
-    requestTimeoutMs: 15_000,
+    requestTimeoutMs: null,
     ...overrides,
   };
 }

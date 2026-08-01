@@ -65,6 +65,10 @@ export type ProviderAdapterExecuteRequest = {
   sourceIds?: readonly string[];
 };
 
+export type ProviderAdapterExecutionContext = Readonly<{
+  signal: AbortSignal;
+}>;
+
 export type ProviderAdapterExecuteResult = {
   success: boolean;
   providerId: RegisteredProviderId;
@@ -75,6 +79,7 @@ export type ProviderAdapterExecuteResult = {
 
 export type ProviderAdapterExecuteContract = (
   input: ProviderAdapterExecuteRequest,
+  executionContext: ProviderAdapterExecutionContext,
 ) => Promise<ProviderAdapterExecuteResult>;
 
 export type ProviderAdapterContract = {

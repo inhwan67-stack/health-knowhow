@@ -2,6 +2,7 @@ import {
   buildProviderRegistry,
   selectProviderForCapability,
   validateProviderSelectionForExecution,
+  type ProviderAdapterExecutionContext,
   type ProviderAdapterExecuteRequest,
   type ProviderAdapterExecuteResult,
   type ProviderSelectionResult,
@@ -21,6 +22,22 @@ import {
   type ProviderCancellationRetryBoundaryResult,
   type ValidatedProviderCancellationSupervisor,
 } from "./providerCancellationSupervisor";
+import {
+  buildProviderTimeoutSchedulerRuntime,
+  cleanupProviderExecutionTimeoutAttempt,
+  createProviderExecutionTimeoutCoordinator,
+  markProviderExecutionTimeoutProviderSettled,
+  readProviderExecutionTimeoutSnapshot,
+  startProviderExecutionTimeoutAttempt,
+  type ProviderExecutionTimeoutOutcomeKind,
+  type ProviderExecutionTimeoutReasonCode,
+  type ProviderExecutionTimeoutSnapshot,
+  type ProviderTimeoutSchedulerConfig,
+  type ValidatedProviderExecutionTimeoutAttempt,
+  type ValidatedProviderExecutionTimeoutCoordinator,
+  type ValidatedProviderExecutionTimeoutContext,
+  type ValidatedProviderTimeoutSchedulerRuntime,
+} from "./providerExecutionTimeoutCoordinator";
 import {
   buildProviderExecutionDecision,
   providerExecutionDefaults,
@@ -150,7 +167,10 @@ type ProviderOrchestrationFailure = {
 type ProviderExecutionBinding = {
   providerId: RegisteredProviderId;
   capabilities: readonly ProviderCapability[];
-  execute: (input: ProviderAdapterExecuteRequest) => Promise<ProviderAdapterExecuteResult>;
+  execute: (
+    input: ProviderAdapterExecuteRequest,
+    executionContext: ProviderAdapterExecutionContext,
+  ) => Promise<ProviderAdapterExecuteResult>;
 };
 
 type ProviderExecutionOrchestratorState = {
@@ -158,6 +178,10 @@ type ProviderExecutionOrchestratorState = {
   bindings: ReadonlyMap<RegisteredProviderId, ProviderExecutionBinding>;
   providerIds: readonly RegisteredProviderId[];
   cancellationSupervisor: ValidatedProviderCancellationSupervisor;
+  timeoutCoordinator: ValidatedProviderExecutionTimeoutCoordinator;
+  timeoutSchedulerRuntime: ValidatedProviderTimeoutSchedulerRuntime;
+  timeoutSchedulerConfigured: boolean;
+  timeoutCallbackRegistrations: Array<() => void>;
 };
 
 export type ProviderExecutionCancellationBoundaryMetadata = {
@@ -169,10 +193,43 @@ export type ProviderExecutionCancellationBoundaryMetadata = {
   reasonCode: ProviderCancellationReasonCode | null;
 };
 
+export type ProviderExecutionTimeoutBoundaryMetadata = Readonly<{
+  valid: boolean;
+  providerMayStart: boolean;
+  authoritativeOutcomeKind: ProviderExecutionTimeoutOutcomeKind;
+  timeoutObserved: boolean;
+  lateSettlementObserved: boolean;
+  jobShouldPause: boolean;
+  retryMayProceed: false;
+  manualReviewRequired: boolean;
+  sideEffects: Readonly<{
+    databaseWritten: false;
+    storageUploaded: false;
+    publicationTriggered: false;
+    notificationSent: false;
+    persistable: false;
+    publishable: false;
+  }>;
+  contractErrorCode: ProviderExecutionTimeoutReasonCode | null;
+}>;
+
+export type ProviderExecutionOrchestratorOptions = {
+  timeoutScheduler?: ProviderTimeoutSchedulerConfig;
+};
+
 const orchestratorState = new WeakMap<ValidatedProviderExecutionOrchestrator, ProviderExecutionOrchestratorState>();
 const cancellationBoundaryByResult = new WeakMap<
   Extract<ProviderExecutionOrchestrationResult, object>,
   ProviderExecutionCancellationBoundaryMetadata
+>();
+const timeoutBoundaryByResult = new WeakMap<
+  Extract<ProviderExecutionOrchestrationResult, object>,
+  {
+    snapshot: ProviderExecutionTimeoutSnapshot | null;
+    providerMayStart: boolean;
+    coordinator: ValidatedProviderExecutionTimeoutCoordinator | null;
+    attempt: ValidatedProviderExecutionTimeoutAttempt | null;
+  }
 >();
 const cancellationSequenceState = new WeakMap<
   ValidatedProviderExecutionCancellationSequence,
@@ -182,6 +239,7 @@ const pendingCancellationSequenceByOrchestrator = new WeakMap<
   ValidatedProviderExecutionOrchestrator,
   ValidatedProviderExecutionCancellationSequence
 >();
+const timeoutObserverByCallback = new WeakMap<() => void, () => void>();
 const safeInternalIdPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const hex64Pattern = /^[a-f0-9]{64}$/;
 const secretLikePattern = /(?:authorization|bearer|token|api[_-]?key|secret|service[_-]?role|sb_secret|sk-[a-z0-9])/i;
@@ -199,12 +257,48 @@ const orchestrationInputKeys = [
   "requestTimeoutMs",
 ] as const;
 
+function buildTimeoutSchedulerConfig(
+  scheduler: ProviderTimeoutSchedulerConfig,
+  callbackRegistrations: Array<() => void>,
+): ProviderTimeoutSchedulerConfig | null {
+  const schedule = readOwnDataProperty(scheduler, "schedule");
+  const cleanup = readOwnDataProperty(scheduler, "cleanup");
+  if (typeof schedule !== "function" || typeof cleanup !== "function") return null;
+  return {
+    schedule: (delayMs, callback) => {
+      const wrappedCallback = () => {
+        callback();
+        timeoutObserverByCallback.get(wrappedCallback)?.();
+      };
+      callbackRegistrations.push(wrappedCallback);
+      return schedule(delayMs, wrappedCallback);
+    },
+    cleanup: (handle) => {
+      cleanup(handle);
+    },
+  };
+}
+
 export function buildProviderExecutionOrchestrator(
   adapters: unknown,
+  options: ProviderExecutionOrchestratorOptions = {},
 ): ProviderExecutionOrchestratorBuildResult {
   if (!Array.isArray(adapters)) return orchestrationFailure("PROVIDER_ORCHESTRATOR_CONFIGURATION_ERROR", false, null);
   const registryResult = buildProviderRegistry(adapters);
   if (!registryResult.valid) return orchestrationFailure("PROVIDER_ORCHESTRATOR_CONFIGURATION_ERROR", false, null);
+  const timeoutSchedulerConfigured = options.timeoutScheduler !== undefined;
+  const timeoutCallbackRegistrations: Array<() => void> = [];
+  const timeoutSchedulerConfig = options.timeoutScheduler
+    ? buildTimeoutSchedulerConfig(options.timeoutScheduler, timeoutCallbackRegistrations)
+    : {
+        schedule: () => Object.freeze({}),
+        cleanup: () => undefined,
+      };
+  if (!timeoutSchedulerConfig) return orchestrationFailure("PROVIDER_ORCHESTRATOR_CONFIGURATION_ERROR", false, null);
+  const timeoutRuntimeResult = buildProviderTimeoutSchedulerRuntime(timeoutSchedulerConfig);
+  if (!timeoutRuntimeResult.valid) return orchestrationFailure("PROVIDER_ORCHESTRATOR_CONFIGURATION_ERROR", false, null);
+  const timeoutCoordinatorResult = createProviderExecutionTimeoutCoordinator(timeoutRuntimeResult.runtime);
+  if (!timeoutCoordinatorResult.valid) return orchestrationFailure("PROVIDER_ORCHESTRATOR_CONFIGURATION_ERROR", false, null);
 
   const bindings = new Map<RegisteredProviderId, ProviderExecutionBinding>();
   for (const adapter of adapters) {
@@ -232,6 +326,10 @@ export function buildProviderExecutionOrchestrator(
     bindings,
     providerIds,
     cancellationSupervisor,
+    timeoutCoordinator: timeoutCoordinatorResult.coordinator,
+    timeoutSchedulerRuntime: timeoutRuntimeResult.runtime,
+    timeoutSchedulerConfigured,
+    timeoutCallbackRegistrations,
   });
 
   return {
@@ -341,35 +439,135 @@ async function runProviderExecutionAttemptWithCancellation(
     );
   }
 
-  const executeRequest = buildExecuteRequest(normalizedInput.value, selection);
-  const running = markProviderCancellationLifecycleRunning(cancellationSupervisor, lifecycle);
-  if (!running.valid) {
-    return attachCancellationBoundary(
-      orchestrationFailure("PROVIDER_EXECUTION_BINDING_CONFIGURATION_ERROR", isMedicalSafetyCapability(normalizedInput.value.capability), null),
+  if (normalizedInput.value.requestTimeoutMs !== null && !state.timeoutSchedulerConfigured) {
+    return attachTimeoutBoundary(
+      attachCancellationBoundary(
+        orchestrationFailure("PROVIDER_EXECUTION_BINDING_CONFIGURATION_ERROR", isMedicalSafetyCapability(normalizedInput.value.capability), null),
+        null,
+      ),
+      null,
+      false,
+      state.timeoutCoordinator,
       null,
     );
   }
-  let providerResult: ProviderAdapterExecuteResult;
-  try {
-    providerResult = await binding.execute(executeRequest);
-  } catch {
-    const completedFailure = markProviderCancellationLifecycleCompletedFailure(cancellationSupervisor, lifecycle);
-    if (!completedFailure.valid) {
-      return attachCancellationBoundary(providerExecutionPolicyContractFailure(normalizedInput.value, selection), null);
-    }
-    return attachCancellationBoundary(
-      summarizeProviderFailure(normalizedInput.value, selection, "UNKNOWN_PROVIDER_ERROR"),
-      buildProviderCancellationRetryBoundaryDecision(lifecycle),
+
+  const timeoutStart = startProviderExecutionTimeoutAttempt(state.timeoutCoordinator, {
+    requestId: normalizedInput.value.requestId,
+    capability: normalizedInput.value.capability,
+    providerId: selection.selectedProviderId,
+    requestTimeoutMs: normalizedInput.value.requestTimeoutMs,
+  });
+  if (!timeoutStart.valid || !timeoutStart.providerMayStart) {
+    return attachTimeoutBoundary(
+      attachCancellationBoundary(
+        orchestrationFailure("PROVIDER_EXECUTION_BINDING_CONFIGURATION_ERROR", isMedicalSafetyCapability(normalizedInput.value.capability), null),
+        null,
+      ),
+      timeoutStart.snapshot,
+      false,
+      state.timeoutCoordinator,
+      null,
+    );
+  }
+  const timeoutCallback = normalizedInput.value.requestTimeoutMs === null ? null : state.timeoutCallbackRegistrations.pop() ?? null;
+
+  const executeRequest = buildExecuteRequest(normalizedInput.value, selection);
+  const running = markProviderCancellationLifecycleRunning(cancellationSupervisor, lifecycle);
+  if (!running.valid) {
+    const cleanupSnapshot = cleanupProviderExecutionTimeoutAttempt(state.timeoutCoordinator, timeoutStart.attempt);
+    return attachTimeoutBoundary(
+      attachCancellationBoundary(
+        orchestrationFailure("PROVIDER_EXECUTION_BINDING_CONFIGURATION_ERROR", isMedicalSafetyCapability(normalizedInput.value.capability), null),
+        null,
+      ),
+      cleanupSnapshot,
+      true,
+      state.timeoutCoordinator,
+      timeoutStart.attempt,
     );
   }
 
+  const observed = observeProviderExecution(
+    state,
+    binding,
+    executeRequest,
+    timeoutStart.executionContext,
+    timeoutStart.attempt,
+    timeoutCallback,
+  );
+  const providerObservation = await observed.first;
+  if (providerObservation.kind === "timeout") {
+    return attachTimeoutBoundary(
+      attachCancellationBoundary(
+        timeoutFailClosedResult(normalizedInput.value, selection, providerObservation.snapshot, providerObservation.providerExecutionStarted),
+        null,
+      ),
+      providerObservation.snapshot,
+      true,
+      state.timeoutCoordinator,
+      timeoutStart.attempt,
+    );
+  }
+
+  if (providerObservation.kind === "rejected") {
+    const failureSnapshot = providerObservation.settlementSnapshot;
+    if (isTimeoutContractFailure(failureSnapshot)) {
+      return attachTimeoutBoundary(
+        attachCancellationBoundary(providerExecutionPolicyContractFailure(normalizedInput.value, selection), null),
+        failureSnapshot,
+        true,
+        state.timeoutCoordinator,
+        timeoutStart.attempt,
+      );
+    }
+    const completedFailure = markProviderCancellationLifecycleCompletedFailure(cancellationSupervisor, lifecycle);
+    if (!completedFailure.valid) {
+      return attachTimeoutBoundary(
+        attachCancellationBoundary(providerExecutionPolicyContractFailure(normalizedInput.value, selection), null),
+        failureSnapshot,
+        true,
+        state.timeoutCoordinator,
+        timeoutStart.attempt,
+      );
+    }
+    return attachTimeoutBoundary(
+      attachCancellationBoundary(
+        summarizeProviderFailure(normalizedInput.value, selection, "UNKNOWN_PROVIDER_ERROR"),
+        buildProviderCancellationRetryBoundaryDecision(lifecycle),
+      ),
+      failureSnapshot,
+      true,
+      state.timeoutCoordinator,
+      timeoutStart.attempt,
+    );
+  }
+
+  const providerResult = providerObservation.result;
+
   const successReferenceId = validateProviderSuccessResult(providerResult, selection);
   if (successReferenceId) {
+    const successSnapshot = providerObservation.settlementSnapshot;
+    if (isTimeoutContractFailure(successSnapshot) || successSnapshot.settlementSlotState !== "PROVIDER_SETTLED_FIRST") {
+      return attachTimeoutBoundary(
+        attachCancellationBoundary(timeoutFailClosedResult(normalizedInput.value, selection, successSnapshot, true), null),
+        successSnapshot,
+        true,
+        state.timeoutCoordinator,
+        timeoutStart.attempt,
+      );
+    }
     const completedSuccess = markProviderCancellationLifecycleCompletedSuccess(cancellationSupervisor, lifecycle);
     if (!completedSuccess.valid) {
-      return attachCancellationBoundary(providerExecutionPolicyContractFailure(normalizedInput.value, selection), null);
+      return attachTimeoutBoundary(
+        attachCancellationBoundary(providerExecutionPolicyContractFailure(normalizedInput.value, selection), null),
+        successSnapshot,
+        true,
+        state.timeoutCoordinator,
+        timeoutStart.attempt,
+      );
     }
-    return attachCancellationBoundary({
+    return attachTimeoutBoundary(attachCancellationBoundary({
       valid: true,
       requestId: normalizedInput.value.requestId,
       capability: normalizedInput.value.capability,
@@ -394,17 +592,39 @@ async function runProviderExecutionAttemptWithCancellation(
       jobShouldPause: false,
       manualReviewRequired: false,
       reasonCode: "PROVIDER_EXECUTION_SUCCEEDED_PREVIEW",
-    }, buildProviderCancellationRetryBoundaryDecision(lifecycle));
+    }, buildProviderCancellationRetryBoundaryDecision(lifecycle)), successSnapshot, true, state.timeoutCoordinator, timeoutStart.attempt);
   }
 
   const failureCode = validateProviderFailureResult(providerResult, selection) ?? "INVALID_PROVIDER_RESPONSE";
+  const failureSnapshot = providerObservation.settlementSnapshot;
+  if (isTimeoutContractFailure(failureSnapshot) || failureSnapshot.settlementSlotState !== "PROVIDER_SETTLED_FIRST") {
+    return attachTimeoutBoundary(
+      attachCancellationBoundary(timeoutFailClosedResult(normalizedInput.value, selection, failureSnapshot, true), null),
+      failureSnapshot,
+      true,
+      state.timeoutCoordinator,
+      timeoutStart.attempt,
+    );
+  }
   const completedFailure = markProviderCancellationLifecycleCompletedFailure(cancellationSupervisor, lifecycle);
   if (!completedFailure.valid) {
-    return attachCancellationBoundary(providerExecutionPolicyContractFailure(normalizedInput.value, selection), null);
+    return attachTimeoutBoundary(
+      attachCancellationBoundary(providerExecutionPolicyContractFailure(normalizedInput.value, selection), null),
+      failureSnapshot,
+      true,
+      state.timeoutCoordinator,
+      timeoutStart.attempt,
+    );
   }
-  return attachCancellationBoundary(
-    summarizeProviderFailure(normalizedInput.value, selection, failureCode),
-    buildProviderCancellationRetryBoundaryDecision(lifecycle),
+  return attachTimeoutBoundary(
+    attachCancellationBoundary(
+      summarizeProviderFailure(normalizedInput.value, selection, failureCode),
+      buildProviderCancellationRetryBoundaryDecision(lifecycle),
+    ),
+    failureSnapshot,
+    true,
+    state.timeoutCoordinator,
+    timeoutStart.attempt,
   );
 }
 
@@ -412,6 +632,18 @@ export function readProviderExecutionCancellationBoundary(
   result: ProviderExecutionOrchestrationResult,
 ): ProviderExecutionCancellationBoundaryMetadata | null {
   return cancellationBoundaryByResult.get(result as Extract<ProviderExecutionOrchestrationResult, object>) ?? null;
+}
+
+export function readProviderExecutionTimeoutBoundary(
+  result: ProviderExecutionOrchestrationResult,
+): ProviderExecutionTimeoutBoundaryMetadata | null {
+  const boundary = timeoutBoundaryByResult.get(result as Extract<ProviderExecutionOrchestrationResult, object>);
+  if (!boundary) return null;
+  const snapshot =
+    boundary.coordinator && boundary.attempt
+      ? readProviderExecutionTimeoutSnapshot(boundary.coordinator, boundary.attempt)
+      : boundary.snapshot;
+  return buildTimeoutBoundaryMetadata(result, snapshot, boundary.providerMayStart);
 }
 
 function buildExecuteRequest(
@@ -427,6 +659,146 @@ function buildExecuteRequest(
     ...(input.revisionId ? { revisionId: input.revisionId } : {}),
     ...(input.sourceIds ? { sourceIds: Object.freeze([...input.sourceIds]) } : {}),
   };
+}
+
+type ProviderExecutionObservation =
+  | { kind: "resolved"; result: ProviderAdapterExecuteResult; settlementSnapshot: ProviderExecutionTimeoutSnapshot }
+  | { kind: "rejected"; settlementSnapshot: ProviderExecutionTimeoutSnapshot }
+  | { kind: "timeout"; snapshot: ProviderExecutionTimeoutSnapshot; providerExecutionStarted: boolean };
+
+function observeProviderExecution(
+  state: ProviderExecutionOrchestratorState,
+  binding: ProviderExecutionBinding,
+  request: ProviderAdapterExecuteRequest,
+  executionContext: ValidatedProviderExecutionTimeoutContext,
+  attempt: ValidatedProviderExecutionTimeoutAttempt,
+  timeoutCallback: (() => void) | null,
+): { first: Promise<ProviderExecutionObservation> } {
+  let completed = false;
+  let providerExecutionStarted = false;
+  let resolveFirst: (observation: ProviderExecutionObservation) => void = () => undefined;
+  const first = new Promise<ProviderExecutionObservation>((resolve) => {
+    resolveFirst = resolve;
+  });
+  const complete = (observation: ProviderExecutionObservation) => {
+    if (completed) return;
+    completed = true;
+    if (timeoutCallback) timeoutObserverByCallback.delete(timeoutCallback);
+    resolveFirst(observation);
+  };
+  const timeoutObserver = () => {
+    const snapshot = readProviderExecutionTimeoutSnapshot(state.timeoutCoordinator, attempt);
+    complete({ kind: "timeout", snapshot, providerExecutionStarted });
+  };
+  if (timeoutCallback) timeoutObserverByCallback.set(timeoutCallback, timeoutObserver);
+
+  try {
+    providerExecutionStarted = true;
+    const providerPromise = binding.execute(request, Object.freeze({ signal: executionContext.signal }));
+    providerPromise.then(
+      (result) => {
+        const settlementSnapshot = markProviderExecutionTimeoutProviderSettled(
+          state.timeoutCoordinator,
+          attempt,
+          isProviderSuccessLike(result) ? "SUCCESS" : "FAILURE",
+        );
+        if (completed) {
+          return;
+        }
+        complete({ kind: "resolved", result, settlementSnapshot });
+      },
+      () => {
+        const settlementSnapshot = markProviderExecutionTimeoutProviderSettled(state.timeoutCoordinator, attempt, "FAILURE");
+        if (completed) {
+          return;
+        }
+        complete({ kind: "rejected", settlementSnapshot });
+      },
+    );
+  } catch {
+    const settlementSnapshot = markProviderExecutionTimeoutProviderSettled(state.timeoutCoordinator, attempt, "FAILURE");
+    complete({ kind: "rejected", settlementSnapshot });
+  }
+
+  return { first };
+}
+
+function attachTimeoutBoundary(
+  result: ProviderExecutionOrchestrationResult,
+  snapshot: ProviderExecutionTimeoutSnapshot | null,
+  providerMayStart: boolean,
+  coordinator: ValidatedProviderExecutionTimeoutCoordinator | null,
+  attempt: ValidatedProviderExecutionTimeoutAttempt | null,
+): ProviderExecutionOrchestrationResult {
+  timeoutBoundaryByResult.set(
+    result as Extract<ProviderExecutionOrchestrationResult, object>,
+    Object.freeze({ snapshot, providerMayStart, coordinator, attempt }),
+  );
+  return result;
+}
+
+function buildTimeoutBoundaryMetadata(
+  result: ProviderExecutionOrchestrationResult,
+  snapshot: ProviderExecutionTimeoutSnapshot | null,
+  providerMayStart: boolean,
+): ProviderExecutionTimeoutBoundaryMetadata {
+  return Object.freeze({
+    valid: snapshot?.valid ?? false,
+    providerMayStart,
+    authoritativeOutcomeKind: snapshot?.authoritativeOutcomeKind ?? "COORDINATOR_CONTRACT_ERROR",
+    timeoutObserved: snapshot?.timeoutFired ?? false,
+    lateSettlementObserved: snapshot?.lateSettlementObserved ?? false,
+    jobShouldPause: snapshot?.jobShouldPause ?? true,
+    retryMayProceed: false,
+    manualReviewRequired: snapshot?.manualReviewRequired ?? result.manualReviewRequired,
+    sideEffects: Object.freeze({
+      databaseWritten: false,
+      storageUploaded: false,
+      publicationTriggered: false,
+      notificationSent: false,
+      persistable: false,
+      publishable: false,
+    }),
+    contractErrorCode: snapshot?.valid === false ? snapshot.reasonCode : null,
+  });
+}
+
+function timeoutFailClosedResult(
+  input: NormalizedProviderExecutionInput,
+  selection: ValidatedProviderSelection,
+  snapshot: ProviderExecutionTimeoutSnapshot,
+  providerExecutionStarted: boolean,
+): ProviderExecutionOrchestrationResult {
+  return {
+    valid: false,
+    requestId: null,
+    capability: input.capability,
+    selectedProviderId: selection.selectedProviderId,
+    providerSelected: true,
+    providerExecutionAttempted: providerExecutionStarted,
+    providerExecutionSucceeded: false,
+    providerCallCount: providerExecutionStarted ? 1 : 0,
+    internalOutputReferenceId: null,
+    executionDecision: null,
+    retryExecuted: false,
+    fallbackExecuted: false,
+    databaseWritten: false,
+    storageUploaded: false,
+    publicationTriggered: false,
+    notificationSent: false,
+    persistable: false,
+    publishable: false,
+    medicalVerificationCompleted: false,
+    finalApprovalGranted: false,
+    failClosed: true,
+    jobShouldPause: true,
+    manualReviewRequired: isMedicalSafetyCapability(input.capability),
+    reasonCode: "PROVIDER_EXECUTION_POLICY_CONTRACT_ERROR",
+  };
+}
+
+function isTimeoutContractFailure(snapshot: ProviderExecutionTimeoutSnapshot): boolean {
+  return snapshot.valid === false || snapshot.settlementSlotState === "CONTRACT_ERROR";
 }
 
 function attachCancellationBoundary(
@@ -591,6 +963,10 @@ function validateProviderSuccessResult(
   return value.internalOutputReferenceId;
 }
 
+function isProviderSuccessLike(value: unknown): boolean {
+  return isObjectRecord(value) && readOwnDataProperty(value, "success") === true;
+}
+
 function validateProviderFailureResult(
   value: unknown,
   selection: ValidatedProviderSelection,
@@ -716,6 +1092,16 @@ function orchestrationFailure(
 
 function isObjectRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function readOwnDataProperty(value: object, key: PropertyKey): unknown {
+  try {
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (!descriptor || !("value" in descriptor)) return undefined;
+    return descriptor.value;
+  } catch {
+    return undefined;
+  }
 }
 
 function isProviderCapability(value: unknown): value is ProviderCapability {

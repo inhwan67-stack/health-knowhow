@@ -5,11 +5,14 @@ import {
   createProviderExecutionCancellationSequence,
   prepareProviderExecutionCancellationAttempt,
   readProviderExecutionCancellationBoundary,
+  readProviderExecutionTimeoutBoundary,
   runProviderExecutionAttempt,
   type ProviderExecutionOrchestratorInput,
+  type ProviderExecutionOrchestratorOptions,
   type ValidatedProviderExecutionOrchestrator,
 } from "./providerExecutionOrchestrator";
 import type {
+  ProviderAdapterExecutionContext,
   ProviderAdapterContract,
   ProviderAdapterExecuteRequest,
   ProviderAdapterExecuteResult,
@@ -45,7 +48,7 @@ function input(overrides: Partial<ProviderExecutionOrchestratorInput> = {}): Pro
     attemptNumber: 1,
     maxAttempts: 3,
     retryAfterMs: null,
-    requestTimeoutMs: 15_000,
+    requestTimeoutMs: null,
     ...overrides,
   };
 }
@@ -54,6 +57,34 @@ function buildOrThrow(adapters: readonly ProviderAdapterContract[] = [adapter()]
   const result = buildProviderExecutionOrchestrator(adapters);
   if (!result.valid) throw new Error("Expected valid orchestrator");
   return result.orchestrator;
+}
+
+function buildWithOptionsOrThrow(
+  adapters: readonly ProviderAdapterContract[],
+  options: ProviderExecutionOrchestratorOptions,
+): ValidatedProviderExecutionOrchestrator {
+  const result = buildProviderExecutionOrchestrator(adapters, options);
+  if (!result.valid) throw new Error("Expected valid orchestrator");
+  return result.orchestrator;
+}
+
+function fakeScheduler() {
+  const callbacks: Array<() => void> = [];
+  const handles: unknown[] = [];
+  const schedule = vi.fn((delayMs: number, callback: () => void) => {
+    const handle = Object.freeze({ delayMs, id: handles.length + 1 });
+    handles.push(handle);
+    callbacks.push(callback);
+    return handle;
+  });
+  const cleanup = vi.fn();
+  return {
+    schedule,
+    cleanup,
+    fire: (index = 0) => callbacks[index]?.(),
+    callbacks,
+    handles,
+  };
 }
 
 describe("provider execution orchestrator", () => {
@@ -257,16 +288,22 @@ describe("provider execution orchestrator", () => {
     );
   });
 
-  it("executes selected provider exactly once with structured fields only", async () => {
-    const execute = vi.fn(async (request: ProviderAdapterExecuteRequest) => ({
+  it("executes selected provider exactly once with structured fields and separate AbortSignal context", async () => {
+    const execute = vi.fn(async (request: ProviderAdapterExecuteRequest, context: ProviderAdapterExecutionContext) => {
+      expect(context.signal).toBeInstanceOf(AbortSignal);
+      expect(Object.keys(context)).toEqual(["signal"]);
+      expect("signal" in request).toBe(false);
+      expect(JSON.stringify(request)).not.toMatch(/AbortController|Coordinator|Attempt|scheduler|handle|callback/i);
+      return {
       success: true,
       providerId: request.providerId,
       capability: request.capability,
       internalOutputReferenceId: "provider-output-1",
-    }));
+    };
+    });
     const result = await runProviderExecutionAttempt(buildOrThrow([adapter({ execute })]), input());
     expect(execute).toHaveBeenCalledTimes(1);
-    expect(execute).toHaveBeenCalledWith({
+    expect(execute.mock.calls[0][0]).toEqual({
       requestId: "provider-request-1",
       capability: "medical_source_fetch",
       providerId: "cdc-safe-fetch",
@@ -289,6 +326,14 @@ describe("provider execution orchestrator", () => {
       medicalVerificationCompleted: false,
       finalApprovalGranted: false,
       reasonCode: "PROVIDER_EXECUTION_SUCCEEDED_PREVIEW",
+    });
+    expect(readProviderExecutionTimeoutBoundary(result)).toMatchObject({
+      valid: true,
+      providerMayStart: true,
+      authoritativeOutcomeKind: "PROVIDER_COMPLETED_BEFORE_TIMEOUT",
+      retryMayProceed: false,
+      jobShouldPause: false,
+      manualReviewRequired: false,
     });
   });
 
@@ -314,6 +359,158 @@ describe("provider execution orchestrator", () => {
       retryScheduled: true,
       nextRetryDelayMs: 1_000,
     });
+    expect(readProviderExecutionTimeoutBoundary(result)).toMatchObject({
+      valid: true,
+      providerMayStart: true,
+      authoritativeOutcomeKind: "PROVIDER_FAILED_BEFORE_TIMEOUT",
+      retryMayProceed: false,
+    });
+  });
+
+  it("does not call adapters when timeout wins during attempt registration", async () => {
+    const schedule = vi.fn((_delayMs: number, callback: () => void) => {
+      callback();
+      return Object.freeze({ id: "sync-timeout" });
+    });
+    const cleanup = vi.fn();
+    const execute = vi.fn();
+    const orchestrator = buildWithOptionsOrThrow([adapter({ execute })], { timeoutScheduler: { schedule, cleanup } });
+
+    const result = await runProviderExecutionAttempt(orchestrator, input({ requestTimeoutMs: 15_000 }));
+
+    expect(execute).not.toHaveBeenCalled();
+    expect(cleanup).toHaveBeenCalledTimes(1);
+    expect(result).toMatchObject({
+      valid: false,
+      providerExecutionAttempted: false,
+      providerCallCount: 0,
+      retryExecuted: false,
+      fallbackExecuted: false,
+      persistable: false,
+      publishable: false,
+      manualReviewRequired: true,
+      reasonCode: "PROVIDER_EXECUTION_BINDING_CONFIGURATION_ERROR",
+    });
+    expect(readProviderExecutionTimeoutBoundary(result)).toMatchObject({
+      valid: true,
+      providerMayStart: false,
+      authoritativeOutcomeKind: "CANCELLATION_REQUESTED",
+      timeoutObserved: true,
+      retryMayProceed: false,
+      jobShouldPause: true,
+      manualReviewRequired: true,
+    });
+    expect(readProviderExecutionCancellationBoundary(result)).toMatchObject({
+      valid: false,
+      retryMayProceed: false,
+      jobShouldPause: true,
+    });
+  });
+
+  it("fails closed when timeout wins before a pending provider settles and keeps observing late success", async () => {
+    const scheduler = fakeScheduler();
+    let resolveProvider: (value: ProviderAdapterExecuteResult) => void = () => undefined;
+    const execute = vi.fn(
+      () =>
+        new Promise<ProviderAdapterExecuteResult>((resolve) => {
+          resolveProvider = resolve;
+        }),
+    );
+    const orchestrator = buildWithOptionsOrThrow([adapter({ execute })], { timeoutScheduler: scheduler });
+
+    const resultPromise = runProviderExecutionAttempt(orchestrator, input({ requestTimeoutMs: 15_000 }));
+    await Promise.resolve();
+    scheduler.fire();
+    const result = await resultPromise;
+
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(result).toMatchObject({
+      valid: false,
+      providerExecutionAttempted: true,
+      providerCallCount: 1,
+      retryExecuted: false,
+      fallbackExecuted: false,
+      jobShouldPause: true,
+      manualReviewRequired: true,
+    });
+    expect(readProviderExecutionTimeoutBoundary(result)).toMatchObject({
+      providerMayStart: true,
+      authoritativeOutcomeKind: "CANCELLATION_REQUESTED",
+      timeoutObserved: true,
+      retryMayProceed: false,
+      jobShouldPause: true,
+    });
+
+    resolveProvider({
+      success: true,
+      providerId: "cdc-safe-fetch",
+      capability: "medical_source_fetch",
+      internalOutputReferenceId: "late-output",
+    });
+    await Promise.resolve();
+    expect(JSON.stringify(result)).not.toContain("late-output");
+  });
+
+  it("fails closed when timeout wins before a pending provider rejects and prevents unhandled rejection", async () => {
+    const scheduler = fakeScheduler();
+    let rejectProvider: (reason: unknown) => void = () => undefined;
+    const execute = vi.fn(
+      () =>
+        new Promise<ProviderAdapterExecuteResult>((_resolve, reject) => {
+          rejectProvider = reject;
+        }),
+    );
+    const orchestrator = buildWithOptionsOrThrow([adapter({ execute })], { timeoutScheduler: scheduler });
+
+    const resultPromise = runProviderExecutionAttempt(orchestrator, input({ requestTimeoutMs: 15_000 }));
+    await Promise.resolve();
+    scheduler.fire();
+    const result = await resultPromise;
+    rejectProvider(new Error("Authorization Bearer secret late rejection"));
+    await Promise.resolve();
+
+    expect(result).toMatchObject({
+      valid: false,
+      retryExecuted: false,
+      fallbackExecuted: false,
+      manualReviewRequired: true,
+    });
+    expect(JSON.stringify(result).toLowerCase()).not.toMatch(/authorization|secret|late rejection/);
+  });
+
+  it("fails closed when timeout cleanup fails and does not expose cleanup errors", async () => {
+    const scheduler = fakeScheduler();
+    scheduler.cleanup.mockImplementation(() => {
+      throw new Error("Authorization Bearer secret cleanup");
+    });
+    const execute = vi.fn(
+      () =>
+        new Promise<ProviderAdapterExecuteResult>(() => {
+          // Intentionally pending. The deterministic scheduler wins the attempt.
+        }),
+    );
+    const orchestrator = buildWithOptionsOrThrow([adapter({ execute })], { timeoutScheduler: scheduler });
+
+    const resultPromise = runProviderExecutionAttempt(orchestrator, input({ requestTimeoutMs: 15_000 }));
+    await Promise.resolve();
+    scheduler.fire();
+    const result = await resultPromise;
+
+    expect(result).toMatchObject({
+      valid: false,
+      retryExecuted: false,
+      fallbackExecuted: false,
+      jobShouldPause: true,
+      manualReviewRequired: true,
+    });
+    expect(readProviderExecutionTimeoutBoundary(result)).toMatchObject({
+      valid: false,
+      providerMayStart: true,
+      authoritativeOutcomeKind: "COORDINATOR_CONTRACT_ERROR",
+      contractErrorCode: "PROVIDER_TIMEOUT_CONTRACT_ERROR",
+      retryMayProceed: false,
+    });
+    expect(JSON.stringify(result).toLowerCase()).not.toMatch(/authorization|secret|cleanup/);
   });
 
   it("keeps attempts exhausted and fallback-required failures single-call only", async () => {
@@ -802,5 +999,321 @@ describe("provider execution orchestrator", () => {
     expect(serialized).not.toContain("\"selection\"");
     expect(serialized).not.toContain("\"adapter\"");
     expect(serialized).not.toContain("\"execute\"");
+  });
+
+  it("keeps an earlier attempt stale timeout callback from timing out a later attempt", async () => {
+    const scheduler = fakeScheduler();
+    let resolveA: (value: ProviderAdapterExecuteResult) => void = () => undefined;
+    let resolveB: (value: ProviderAdapterExecuteResult) => void = () => undefined;
+    const execute = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise<ProviderAdapterExecuteResult>((resolve) => {
+            resolveA = resolve;
+          }),
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise<ProviderAdapterExecuteResult>((resolve) => {
+            resolveB = resolve;
+          }),
+      );
+    const orchestrator = buildWithOptionsOrThrow([adapter({ execute })], { timeoutScheduler: scheduler });
+
+    const firstPromise = runProviderExecutionAttempt(orchestrator, input({ requestTimeoutMs: 15_000, requestId: "provider-request-1" }));
+    await Promise.resolve();
+    const secondPromise = runProviderExecutionAttempt(orchestrator, input({ requestTimeoutMs: 15_000, requestId: "provider-request-2" }));
+    await Promise.resolve();
+
+    scheduler.fire(0);
+    const first = await firstPromise;
+    resolveB({
+      success: true,
+      providerId: "cdc-safe-fetch",
+      capability: "medical_source_fetch",
+      internalOutputReferenceId: "provider-output-2",
+    });
+    const second = await secondPromise;
+    resolveA({
+      success: true,
+      providerId: "cdc-safe-fetch",
+      capability: "medical_source_fetch",
+      internalOutputReferenceId: "late-output-1",
+    });
+    await Promise.resolve();
+
+    expect(first).toMatchObject({ valid: false, providerCallCount: 1, jobShouldPause: true });
+    expect(readProviderExecutionTimeoutBoundary(first)).toMatchObject({ timeoutObserved: true });
+    expect(second).toMatchObject({
+      valid: true,
+      requestId: "provider-request-2",
+      providerExecutionSucceeded: true,
+      internalOutputReferenceId: "provider-output-2",
+    });
+    expect(readProviderExecutionTimeoutBoundary(second)).toMatchObject({
+      authoritativeOutcomeKind: "PROVIDER_COMPLETED_BEFORE_TIMEOUT",
+      timeoutObserved: false,
+    });
+  });
+
+  it("isolates simultaneous attempt observers on the same orchestrator", async () => {
+    const scheduler = fakeScheduler();
+    let resolveA: (value: ProviderAdapterExecuteResult) => void = () => undefined;
+    const execute = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise<ProviderAdapterExecuteResult>((resolve) => {
+            resolveA = resolve;
+          }),
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise<ProviderAdapterExecuteResult>(() => {
+            // Second attempt intentionally stays pending until its own callback wins.
+          }),
+      );
+    const orchestrator = buildWithOptionsOrThrow([adapter({ execute })], { timeoutScheduler: scheduler });
+
+    const firstPromise = runProviderExecutionAttempt(orchestrator, input({ requestTimeoutMs: 15_000, requestId: "provider-request-1" }));
+    await Promise.resolve();
+    const secondPromise = runProviderExecutionAttempt(orchestrator, input({ requestTimeoutMs: 15_000, requestId: "provider-request-2" }));
+    await Promise.resolve();
+
+    scheduler.fire(1);
+    const second = await secondPromise;
+    resolveA({
+      success: true,
+      providerId: "cdc-safe-fetch",
+      capability: "medical_source_fetch",
+      internalOutputReferenceId: "provider-output-1",
+    });
+    const first = await firstPromise;
+
+    expect(second).toMatchObject({ valid: false, requestId: null, providerCallCount: 1 });
+    expect(readProviderExecutionTimeoutBoundary(second)).toMatchObject({ timeoutObserved: true });
+    expect(first).toMatchObject({
+      valid: true,
+      requestId: "provider-request-1",
+      providerExecutionSucceeded: true,
+      internalOutputReferenceId: "provider-output-1",
+    });
+    expect(readProviderExecutionTimeoutBoundary(first)).toMatchObject({
+      authoritativeOutcomeKind: "PROVIDER_COMPLETED_BEFORE_TIMEOUT",
+      timeoutObserved: false,
+    });
+  });
+
+  it("preserves provider-first resolution when a timeout callback fires immediately afterward", async () => {
+    const scheduler = fakeScheduler();
+    let resolveProvider: (value: ProviderAdapterExecuteResult) => void = () => undefined;
+    const execute = vi.fn(
+      () =>
+        new Promise<ProviderAdapterExecuteResult>((resolve) => {
+          resolveProvider = resolve;
+        }),
+    );
+    const orchestrator = buildWithOptionsOrThrow([adapter({ execute })], { timeoutScheduler: scheduler });
+
+    const resultPromise = runProviderExecutionAttempt(orchestrator, input({ requestTimeoutMs: 15_000 }));
+    await Promise.resolve();
+    resolveProvider({
+      success: true,
+      providerId: "cdc-safe-fetch",
+      capability: "medical_source_fetch",
+      internalOutputReferenceId: "provider-output-1",
+    });
+    await Promise.resolve();
+    scheduler.fire();
+    const result = await resultPromise;
+
+    expect(result).toMatchObject({
+      valid: true,
+      providerExecutionSucceeded: true,
+      internalOutputReferenceId: "provider-output-1",
+    });
+    expect(readProviderExecutionTimeoutBoundary(result)).toMatchObject({
+      authoritativeOutcomeKind: "PROVIDER_COMPLETED_BEFORE_TIMEOUT",
+      timeoutObserved: false,
+      lateSettlementObserved: false,
+    });
+  });
+
+  it("reflects late success in timeout boundary reads after the result has been returned", async () => {
+    const scheduler = fakeScheduler();
+    let resolveProvider: (value: ProviderAdapterExecuteResult) => void = () => undefined;
+    const execute = vi.fn(
+      () =>
+        new Promise<ProviderAdapterExecuteResult>((resolve) => {
+          resolveProvider = resolve;
+        }),
+    );
+    const orchestrator = buildWithOptionsOrThrow([adapter({ execute })], { timeoutScheduler: scheduler });
+
+    const resultPromise = runProviderExecutionAttempt(orchestrator, input({ requestTimeoutMs: 15_000 }));
+    await Promise.resolve();
+    scheduler.fire();
+    const result = await resultPromise;
+    expect(readProviderExecutionTimeoutBoundary(result)).toMatchObject({ lateSettlementObserved: false });
+
+    resolveProvider({
+      success: true,
+      providerId: "cdc-safe-fetch",
+      capability: "medical_source_fetch",
+      internalOutputReferenceId: "late-output",
+    });
+    await Promise.resolve();
+
+    expect(readProviderExecutionTimeoutBoundary(result)).toMatchObject({
+      lateSettlementObserved: true,
+      authoritativeOutcomeKind: "CANCELLATION_REQUESTED",
+    });
+  });
+
+  it("reflects late failure in timeout boundary reads after the result has been returned", async () => {
+    const scheduler = fakeScheduler();
+    let rejectProvider: (reason: unknown) => void = () => undefined;
+    const execute = vi.fn(
+      () =>
+        new Promise<ProviderAdapterExecuteResult>((_resolve, reject) => {
+          rejectProvider = reject;
+        }),
+    );
+    const orchestrator = buildWithOptionsOrThrow([adapter({ execute })], { timeoutScheduler: scheduler });
+
+    const resultPromise = runProviderExecutionAttempt(orchestrator, input({ requestTimeoutMs: 15_000 }));
+    await Promise.resolve();
+    scheduler.fire();
+    const result = await resultPromise;
+    expect(readProviderExecutionTimeoutBoundary(result)).toMatchObject({ lateSettlementObserved: false });
+
+    rejectProvider(new Error("late secret failure"));
+    await Promise.resolve();
+
+    expect(readProviderExecutionTimeoutBoundary(result)).toMatchObject({
+      lateSettlementObserved: true,
+      authoritativeOutcomeKind: "CANCELLATION_REQUESTED",
+    });
+    expect(JSON.stringify(result).toLowerCase()).not.toMatch(/secret|late/);
+  });
+
+  it("fails closed without invoking adapters when requestTimeoutMs is set without a scheduler", async () => {
+    const execute = vi.fn(async (): Promise<ProviderAdapterExecuteResult> => ({
+      success: true,
+      providerId: "cdc-safe-fetch",
+      capability: "medical_source_fetch",
+      internalOutputReferenceId: "provider-output-1",
+    }));
+
+    const result = await runProviderExecutionAttempt(buildOrThrow([adapter({ execute })]), input({ requestTimeoutMs: 15_000 }));
+
+    expect(execute).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      valid: false,
+      providerExecutionAttempted: false,
+      providerCallCount: 0,
+      jobShouldPause: true,
+      manualReviewRequired: true,
+      reasonCode: "PROVIDER_EXECUTION_BINDING_CONFIGURATION_ERROR",
+    });
+    expect(readProviderExecutionTimeoutBoundary(result)).toMatchObject({
+      valid: false,
+      providerMayStart: false,
+      retryMayProceed: false,
+      jobShouldPause: true,
+    });
+  });
+
+  it("preserves provider call audit when timeout cleanup fails after provider start", async () => {
+    const scheduler = fakeScheduler();
+    scheduler.cleanup.mockImplementation(() => {
+      throw new Error("secret cleanup failure");
+    });
+    const execute = vi.fn(
+      () =>
+        new Promise<ProviderAdapterExecuteResult>(() => {
+          // Pending until timeout wins.
+        }),
+    );
+    const orchestrator = buildWithOptionsOrThrow([adapter({ execute })], { timeoutScheduler: scheduler });
+
+    const resultPromise = runProviderExecutionAttempt(orchestrator, input({ requestTimeoutMs: 15_000 }));
+    await Promise.resolve();
+    scheduler.fire();
+    const result = await resultPromise;
+
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(result).toMatchObject({
+      valid: false,
+      providerExecutionAttempted: true,
+      providerCallCount: 1,
+      reasonCode: "PROVIDER_EXECUTION_POLICY_CONTRACT_ERROR",
+    });
+    expect(readProviderExecutionTimeoutBoundary(result)).toMatchObject({
+      valid: false,
+      authoritativeOutcomeKind: "COORDINATOR_CONTRACT_ERROR",
+      contractErrorCode: "PROVIDER_TIMEOUT_CONTRACT_ERROR",
+    });
+    expect(JSON.stringify(result).toLowerCase()).not.toMatch(/secret|cleanup/);
+  });
+
+  it("snapshots scheduler schedule and cleanup values once without using later getter changes", async () => {
+    const callbacks: Array<() => void> = [];
+    const safeSchedule = vi.fn((_delayMs: number, callback: () => void) => {
+      callbacks.push(callback);
+      return Object.freeze({ id: "safe-handle" });
+    });
+    const safeCleanup = vi.fn();
+    const evilSchedule = vi.fn(() => {
+      throw new Error("Authorization Bearer secret schedule");
+    });
+    const scheduler = {
+      schedule: safeSchedule,
+      cleanup: safeCleanup,
+    };
+    const execute = vi.fn(
+      () =>
+        new Promise<ProviderAdapterExecuteResult>(() => {
+          // Pending until the snapshotted scheduler callback wins.
+        }),
+    );
+    const orchestrator = buildWithOptionsOrThrow([adapter({ execute })], { timeoutScheduler: scheduler });
+    scheduler.schedule = evilSchedule;
+
+    const resultPromise = runProviderExecutionAttempt(orchestrator, input({ requestTimeoutMs: 15_000 }));
+    await Promise.resolve();
+    callbacks[0]?.();
+    const result = await resultPromise;
+
+    expect(safeSchedule).toHaveBeenCalledTimes(1);
+    expect(evilSchedule).not.toHaveBeenCalled();
+    expect(safeCleanup).toHaveBeenCalledTimes(1);
+    expect(result).toMatchObject({
+      valid: false,
+      providerExecutionAttempted: true,
+      providerCallCount: 1,
+    });
+  });
+
+  it("rejects accessor scheduler functions before provider execution", async () => {
+    const execute = vi.fn();
+    const scheduler = {};
+    Object.defineProperty(scheduler, "schedule", {
+      get: () => {
+        throw new Error("secret getter");
+      },
+      enumerable: true,
+    });
+    Object.defineProperty(scheduler, "cleanup", {
+      value: vi.fn(),
+      enumerable: true,
+    });
+
+    const buildResult = buildProviderExecutionOrchestrator([adapter({ execute })], { timeoutScheduler: scheduler as never });
+
+    expect(buildResult.valid).toBe(false);
+    expect(execute).not.toHaveBeenCalled();
+    expect(JSON.stringify(buildResult).toLowerCase()).not.toMatch(/secret|getter/);
   });
 });
