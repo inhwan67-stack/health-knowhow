@@ -92,6 +92,12 @@ type ProviderRetryTimeoutObservationSideEffects = Readonly<{
   publishable: false;
 }>;
 
+export type ProviderRetrySuccessfulOutputReference = Readonly<{
+  internalOutputReferenceId: string;
+  providerId: RegisteredProviderId;
+  capability: ProviderCapability;
+}>;
+
 export type ProviderRetrySequenceResult =
   | ProviderRetrySequenceFailure
   | {
@@ -113,6 +119,7 @@ export type ProviderRetrySequenceResult =
       waitedDelayMs: readonly number[];
       finalAttemptNumber: number;
       finalExecutionDecision: ProviderExecutionDecision | null;
+      successfulOutputReference: ProviderRetrySuccessfulOutputReference | null;
       fallbackExecuted: false;
       databaseWritten: false;
       storageUploaded: false;
@@ -150,6 +157,7 @@ type ProviderRetrySequenceFailure = {
   waitedDelayMs: readonly number[];
   finalAttemptNumber: number | null;
   finalExecutionDecision: ProviderExecutionDecision | null;
+  successfulOutputReference: null;
   fallbackExecuted: false;
   databaseWritten: false;
   storageUploaded: false;
@@ -204,6 +212,7 @@ type SequenceCounters = {
   sequenceProviderId: RegisteredProviderId | null;
   finalAttemptNumber: number | null;
   finalExecutionDecision: ProviderExecutionDecision | null;
+  successfulOutputReference: ProviderRetrySuccessfulOutputReference | null;
 };
 
 type AttemptAudit = {
@@ -350,6 +359,7 @@ export async function runProviderRetrySequence(
     sequenceProviderId: null,
     finalAttemptNumber: null,
     finalExecutionDecision: null,
+    successfulOutputReference: null,
   };
   const timeoutObservationRecords: ProviderRetryTimeoutObservationRecord[] = [];
   const cancellationSequenceResult = createProviderExecutionCancellationSequence(orchestrator);
@@ -413,6 +423,11 @@ export async function runProviderRetrySequence(
           reasonCode: "PROVIDER_RETRY_SEQUENCE_STOPPED_PREVIEW",
         }), timeoutObservationRecords);
       }
+      const outputReference = buildSuccessfulOutputReference(attemptSnapshot, normalized.value.capability);
+      if (!outputReference) {
+        return attachTimeoutObservationRecords(attemptContractFailure(normalized.value, counters), timeoutObservationRecords);
+      }
+      counters.successfulOutputReference = outputReference;
       return attachTimeoutObservationRecords(sequenceResult(normalized.value, counters, {
         sequenceSucceeded: true,
         failClosed: false,
@@ -613,6 +628,22 @@ function isFailureRetryBoundaryState(
   state: ProviderExecutionCancellationBoundaryMetadata["lifecycleState"],
 ): boolean {
   return state === "FAILED_BEFORE_CALL" || state === "COMPLETED_FAILURE";
+}
+
+function buildSuccessfulOutputReference(
+  attempt: Readonly<Record<(typeof attemptResultKeys)[number], unknown>>,
+  capability: ProviderCapability,
+): ProviderRetrySuccessfulOutputReference | null {
+  const internalOutputReferenceId = attempt.internalOutputReferenceId;
+  const providerId = attempt.selectedProviderId;
+  if (!isSafeInternalId(internalOutputReferenceId)) return null;
+  if (!isRegisteredProviderId(providerId)) return null;
+  if (attempt.capability !== capability) return null;
+  return Object.freeze({
+    internalOutputReferenceId,
+    providerId,
+    capability,
+  });
 }
 
 function markCurrentAttemptUnknown(counters: SequenceCounters): void {
@@ -902,6 +933,7 @@ function sequenceResult(
     waitedDelayMs: Object.freeze([...counters.waitedDelayMs]),
     finalAttemptNumber: counters.finalAttemptNumber ?? 0,
     finalExecutionDecision: counters.finalExecutionDecision,
+    successfulOutputReference: outcome.sequenceSucceeded ? counters.successfulOutputReference : null,
     fallbackExecuted: false,
     databaseWritten: false,
     storageUploaded: false,
@@ -1057,6 +1089,7 @@ function freezeFailure(input: {
     waitedDelayMs: Object.freeze([...input.waitedDelayMs]),
     finalAttemptNumber: input.finalAttemptNumber,
     finalExecutionDecision: input.finalExecutionDecision,
+    successfulOutputReference: null,
     fallbackExecuted: false,
     databaseWritten: false,
     storageUploaded: false,

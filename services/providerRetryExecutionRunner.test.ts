@@ -236,9 +236,14 @@ describe("provider retry execution runner", () => {
         providerId: request.providerId,
         capability: request.capability,
         internalOutputReferenceId: "provider-output-2",
-      }));
+    }));
     const result = await runProviderRetrySequence(orchestrator(execute), retryRuntimeResult.runtime, input());
     expect(result).toMatchObject({ valid: true, sequenceSucceeded: true, retryExecutedCount: 1 });
+    expect(result.successfulOutputReference).toEqual({
+      internalOutputReferenceId: "provider-output-2",
+      providerId: "cdc-safe-fetch",
+      capability: "medical_source_fetch",
+    });
     expect(descriptorSleep).toHaveBeenCalledExactlyOnceWith(1000);
     expect(getTrapSleep).not.toHaveBeenCalled();
   });
@@ -497,8 +502,14 @@ describe("provider retry execution runner", () => {
       finalApprovalGranted: false,
       reasonCode: "PROVIDER_RETRY_SEQUENCE_SUCCEEDED_PREVIEW",
     });
+    expect(result.successfulOutputReference).toEqual({
+      internalOutputReferenceId: "provider-output-1",
+      providerId: "cdc-safe-fetch",
+      capability: "medical_source_fetch",
+    });
     expect(Object.isFrozen(result)).toBe(true);
     expect(Object.isFrozen(result.waitedDelayMs)).toBe(true);
+    expect(Object.isFrozen(result.successfulOutputReference)).toBe(true);
   });
 
   it("runs one fake sleep and retries after a retryable failure", async () => {
@@ -532,9 +543,92 @@ describe("provider retry execution runner", () => {
       retryExecuted: true,
       waitedDelayMs: [1000],
       finalAttemptNumber: 2,
+      successfulOutputReference: {
+        internalOutputReferenceId: "provider-output-2",
+        providerId: "cdc-safe-fetch",
+        capability: "medical_source_fetch",
+      },
       fallbackExecuted: false,
       reasonCode: "PROVIDER_RETRY_SEQUENCE_SUCCEEDED_PREVIEW",
     });
+  });
+
+  it("does not propagate output references from provider failure, exhausted, stopped, or unsafe references", async () => {
+    const failureResult = await runProviderRetrySequence(
+      orchestrator(vi.fn(async (): Promise<ProviderAdapterExecuteResult> => failure("CONTENT_POLICY_BLOCKED"))),
+      runtime().runtime,
+      input(),
+    );
+    expect(failureResult).toMatchObject({
+      valid: true,
+      sequenceSucceeded: false,
+      successfulOutputReference: null,
+      reasonCode: "PROVIDER_RETRY_SEQUENCE_STOPPED_PREVIEW",
+    });
+
+    const exhausted = await runProviderRetrySequence(
+      orchestrator(vi.fn(async (): Promise<ProviderAdapterExecuteResult> => failure("REQUEST_TIMEOUT"))),
+      runtime().runtime,
+      input({ maxAttempts: 1 }),
+    );
+    expect(exhausted).toMatchObject({
+      valid: true,
+      sequenceSucceeded: false,
+      successfulOutputReference: null,
+      reasonCode: "PROVIDER_RETRY_SEQUENCE_EXHAUSTED_PREVIEW",
+    });
+
+    for (const internalOutputReferenceId of ["", "sk-abc123", "Authorization-Bearer-secret", "https://evil.example/output"]) {
+      const result = await runProviderRetrySequence(
+        orchestrator(
+          vi.fn(async (request: ProviderAdapterExecuteRequest): Promise<ProviderAdapterExecuteResult> => ({
+            success: true,
+            providerId: request.providerId,
+            capability: request.capability,
+            internalOutputReferenceId,
+          })),
+        ),
+        runtime().runtime,
+        input(),
+      );
+      expect(result).toMatchObject({
+        valid: true,
+        sequenceSucceeded: false,
+        failClosed: true,
+        successfulOutputReference: null,
+        reasonCode: "PROVIDER_RETRY_SEQUENCE_STOPPED_PREVIEW",
+      });
+      expect(JSON.stringify(result).toLowerCase()).not.toMatch(/authorization|bearer|secret|evil|sk-abc123/);
+    }
+  });
+
+  it("does not propagate output references when provider success binding is mismatched", async () => {
+    for (const providerResult of [
+      {
+        success: true,
+        providerId: "unknown-provider",
+        capability: "medical_source_fetch",
+        internalOutputReferenceId: "provider-output-1",
+      },
+      {
+        success: true,
+        providerId: "cdc-safe-fetch",
+        capability: "ai_translation",
+        internalOutputReferenceId: "provider-output-1",
+      },
+    ]) {
+      const result = await runProviderRetrySequence(
+        orchestrator(vi.fn(async () => providerResult as ProviderAdapterExecuteResult)),
+        runtime().runtime,
+        input(),
+      );
+      expect(result).toMatchObject({
+        valid: true,
+        sequenceSucceeded: false,
+        successfulOutputReference: null,
+        reasonCode: "PROVIDER_RETRY_SEQUENCE_STOPPED_PREVIEW",
+      });
+    }
   });
 
   it("uses default maxAttempts=3 and stops exhausted retryable failures without extra sleep", async () => {
@@ -1802,6 +1896,7 @@ describe("provider retry execution runner", () => {
         jobShouldPause: true,
         manualReviewRequired: true,
         retryExecutedCount: 0,
+        successfulOutputReference: null,
         reasonCode: "PROVIDER_RETRY_SEQUENCE_STOPPED_PREVIEW",
       });
       vi.doUnmock("./providerExecutionOrchestrator");
@@ -2061,7 +2156,7 @@ describe("provider retry execution runner", () => {
         retryMayProceed: false,
       }),
     ]);
-    expect(timeoutResult).toMatchObject({ sequenceSucceeded: false, retryExecutedCount: 0 });
+    expect(timeoutResult).toMatchObject({ sequenceSucceeded: false, retryExecutedCount: 0, successfulOutputReference: null });
 
     const failureScheduler = fakeTimeoutScheduler();
     const lateFailure = deferredProviderResult();
@@ -2082,6 +2177,7 @@ describe("provider retry execution runner", () => {
         retryMayProceed: false,
       }),
     ]);
+    expect(failedTimeoutResult).toMatchObject({ sequenceSucceeded: false, successfulOutputReference: null });
     expect(sleep).not.toHaveBeenCalled();
   });
 
