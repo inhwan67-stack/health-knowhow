@@ -125,7 +125,8 @@ describe("buildAiDraftPayload", () => {
   });
 
   it("rejects missing required keys", () => {
-    const { title: _title, ...input } = validInput();
+    const input = validInput();
+    Reflect.deleteProperty(input, "title");
     expectFailure(input, "AI_DRAFT_PAYLOAD_INPUT_KEYS_INVALID");
   });
 
