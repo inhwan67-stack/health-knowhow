@@ -2,6 +2,7 @@ export const providerCapabilities = [
   "medical_source_search",
   "medical_source_fetch",
   "ai_medical_review",
+  "ai_medical_draft_generation",
   "ai_translation",
   "image_generation",
   "notification",
@@ -76,6 +77,7 @@ const medicalSafetyCapabilities = new Set<ProviderCapability>([
   "medical_source_search",
   "medical_source_fetch",
   "ai_medical_review",
+  "ai_medical_draft_generation",
 ]);
 
 const registeredProviderIdSet = new Set<string>(registeredProviderIds);

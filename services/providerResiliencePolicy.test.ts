@@ -16,6 +16,7 @@ const medicalCapabilities: ProviderCapability[] = [
   "medical_source_search",
   "medical_source_fetch",
   "ai_medical_review",
+  "ai_medical_draft_generation",
 ];
 
 const retryableErrors: ProviderFailureErrorCode[] = [
@@ -65,6 +66,12 @@ describe("provider resilience policy", () => {
       expect(decision.capability).toBe(capability);
       expect(decision.reasonCode).toBe(`${capability.toUpperCase()}_REQUEST_TIMEOUT`);
     }
+  });
+
+  it("includes AI medical draft generation exactly once", () => {
+    expect(providerCapabilities).toContain("ai_medical_draft_generation");
+    expect(providerCapabilities.filter((capability) => capability === "ai_medical_draft_generation")).toHaveLength(1);
+    expect(new Set(providerCapabilities).size).toBe(providerCapabilities.length);
   });
 
   it("identifies medical safety capabilities", () => {
@@ -197,6 +204,12 @@ describe("provider resilience policy", () => {
     expect(decision.publishable).toBe(false);
     expect(decision.manualReviewRequired).toBe(false);
     expect(decision.reasonCode).toBe("PROVIDER_ID_CONFIGURATION_ERROR");
+  });
+
+  it("keeps existing non-medical capability classifications unchanged", () => {
+    expect(isMedicalSafetyCapability("ai_translation")).toBe(false);
+    expect(isMedicalSafetyCapability("image_generation")).toBe(false);
+    expect(isMedicalSafetyCapability("notification")).toBe(false);
   });
 
   it("does not mutate the input object", () => {

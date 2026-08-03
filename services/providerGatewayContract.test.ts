@@ -47,6 +47,54 @@ describe("provider gateway contract", () => {
     }
   });
 
+  it("recognizes AI medical draft generation without granting provider approval", () => {
+    expect(isProviderCapability("ai_medical_draft_generation")).toBe(true);
+    expect(allowedTrustTiersByCapability.ai_medical_draft_generation).toEqual(["medical_review_approved"]);
+
+    const result = buildProviderRegistry([
+      adapter({ capabilities: ["ai_medical_draft_generation"], trustTier: "medical_review_approved" }),
+    ]);
+
+    expect(result).toMatchObject({
+      valid: false,
+      reasonCode: "PROVIDER_REGISTRY_CONFIGURATION_ERROR",
+      failClosed: true,
+      persistable: false,
+      publishable: false,
+      executionStarted: false,
+      jobShouldPause: true,
+      unsafeProviderIdsExposed: false,
+    });
+  });
+
+  it("does not let unapproved providers select AI medical draft generation", () => {
+    const registry = buildOrThrow([]);
+    const result = selectProviderForCapability(registry, "ai_medical_draft_generation");
+    expect(result).toMatchObject({
+      selected: false,
+      selectedProviderId: null,
+      capability: "ai_medical_draft_generation",
+      reasonCode: "NO_ELIGIBLE_PROVIDER",
+      failClosed: true,
+      manualReviewRequired: true,
+      persistable: false,
+      publishable: false,
+      executionStarted: false,
+      jobShouldPause: true,
+    });
+  });
+
+  it("does not broaden existing provider approvals for AI medical draft generation", () => {
+    const result = buildProviderRegistry([
+      adapter({ providerId: "cdc-safe-fetch", capabilities: ["medical_source_fetch", "ai_medical_draft_generation"] }),
+    ]);
+    expect(result).toMatchObject({
+      valid: false,
+      reasonCode: "PROVIDER_REGISTRY_CONFIGURATION_ERROR",
+      failClosed: true,
+    });
+  });
+
   it("selects approved medical source fetch providers only after registry validation", () => {
     const registry = buildOrThrow([adapter({ priority: 2 })]);
     const result = selectProviderForCapability(registry, "medical_source_fetch");

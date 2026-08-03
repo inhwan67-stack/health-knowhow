@@ -19,6 +19,7 @@ export const allowedTrustTiersByCapability: Record<ProviderCapability, readonly 
   medical_source_search: ["medical_authoritative"],
   medical_source_fetch: ["medical_authoritative"],
   ai_medical_review: ["medical_review_approved"],
+  ai_medical_draft_generation: ["medical_review_approved"],
   ai_translation: ["trusted_service"],
   image_generation: ["trusted_service"],
   notification: ["trusted_service"],
