@@ -84,7 +84,10 @@ export default function HomeAiQuestionForm({
   }
 
   return (
-    <div className="mt-7 max-w-[505px]">
+    <div
+      id="ai-health-question"
+      className="mt-7 max-w-[505px] scroll-mt-28"
+    >
       <form onSubmit={handleSubmit} role="search" aria-label="AI 건강 질문">
         <label htmlFor="home-health-question" className="sr-only">
           AI에게 물어볼 건강 질문

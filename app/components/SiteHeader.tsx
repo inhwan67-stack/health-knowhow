@@ -5,6 +5,8 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 
 const navItems = [
+  { label: "AI 건강상담", href: "/#ai-health-question" },
+  { label: "건강정보", href: "/health-articles" },
   { label: "병원 찾기", href: "/find-hospital" },
   { label: "건강 가이드", href: "/guides" },
   { label: "나의 건강관리", href: "/my-records/new" },
